@@ -1,0 +1,17 @@
+.DS_Store
+.vscode
+.idea
+.env
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.log
+go.work
+vendor/
+bin/
+debug/
+*.local

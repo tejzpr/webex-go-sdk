@@ -1,0 +1,13 @@
+[project]
+name = "webex-go-sdk"
+description = "A Go SDK for the Cisco Webex APIs"
+authors = ["Tejus Pratap <tejzpr@gmail.com>"]
+repository = "https://github.com/tejzpr/webex-go-sdk"
+
+[default]
+copyright = "2025 Tejus Pratap"
+license = "MPL-2.0"
+
+[[licenses]]
+name = "MPL-2.0"
+file = "../LICENSES/MPL-2.0.txt"

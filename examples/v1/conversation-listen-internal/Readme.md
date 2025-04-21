@@ -1,0 +1,1 @@
+Conversation is not suppose to be used directly, use messages instea.
