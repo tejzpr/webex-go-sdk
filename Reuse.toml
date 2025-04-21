@@ -10,4 +10,4 @@ license = "MPL-2.0"
 
 [[licenses]]
 name = "MPL-2.0"
-file = "./LICENSES/MPL-2.0.txt"
+file = "./LICENSE"
