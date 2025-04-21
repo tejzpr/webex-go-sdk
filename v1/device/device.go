@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package device
 
 import (
@@ -323,7 +322,11 @@ func (c *Client) setupRefreshTimer() {
 
 	refreshTime := time.Duration(c.config.EphemeralDeviceTTL/2+60) * time.Second
 	c.refreshTimer = time.AfterFunc(refreshTime, func() {
-		c.Refresh()
+		if err := c.Refresh(); err != nil {
+			// Log error but don't stop the timer
+			// Using fmt.Printf since we don't want to add a logger dependency
+			fmt.Printf("Error refreshing device: %v\n", err)
+		}
 	})
 }
 

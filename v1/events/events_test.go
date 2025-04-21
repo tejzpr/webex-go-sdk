@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package events
 
 import (
@@ -53,7 +52,7 @@ func TestList(t *testing.T) {
 		// Return sample response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"items": [
 				{
 					"id": "event123",
@@ -145,7 +144,7 @@ func TestGet(t *testing.T) {
 		// Return sample response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": "event123",
 			"resource": "messages",
 			"type": "created",
@@ -229,7 +228,7 @@ func TestListError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"message":"Invalid request"}`))
+		_, _ = w.Write([]byte(`{"message":"Invalid request"}`))
 	}))
 	defer server.Close()
 

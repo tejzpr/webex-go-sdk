@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package webhooks
 
 import (
@@ -68,7 +67,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseWebhook)
+		_ = json.NewEncoder(w).Encode(responseWebhook)
 	}))
 	defer server.Close()
 
@@ -165,7 +164,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(webhook)
+		_ = json.NewEncoder(w).Encode(webhook)
 	}))
 	defer server.Close()
 
@@ -278,7 +277,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -380,7 +379,7 @@ func TestUpdate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseWebhook)
+		_ = json.NewEncoder(w).Encode(responseWebhook)
 	}))
 	defer server.Close()
 

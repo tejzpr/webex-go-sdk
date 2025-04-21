@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package mercury
 
 import (
@@ -80,7 +79,6 @@ type Client struct {
 	webexClient        *webexsdk.Client
 	config             *Config
 	conn               *websocket.Conn
-	listening          bool
 	connected          bool
 	connecting         bool
 	hasConnected       bool
