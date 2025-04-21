@@ -128,6 +128,6 @@ See [CONTRIBUTORS.md](./CONTRIBUTORS.md) for the list of contributors.
 
 ## License
 
-This project is licensed under the Mozilla Public License 2.0 - see the [LICENSES/MPL-2.0.txt](./LICENSES/MPL-2.0.txt) file for details.
+This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE](./LICENSE).
 
 
