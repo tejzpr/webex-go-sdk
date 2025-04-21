@@ -25,7 +25,7 @@ A comprehensive, lightweight Go SDK for Cisco Webex API
 ## Installation
 
 ```bash
-go get github.com/tejzpr/webex-go-sdk
+go get github.com/tejzpr/webex-go-sdk/v2
 ```
 
 ## Quick Start
@@ -38,7 +38,7 @@ import (
     "log"
     "os"
 
-    "github.com/tejzpr/webex-go-sdk/v1"
+    "github.com/tejzpr/webex-go-sdk/v2"
 )
 
 func main() {

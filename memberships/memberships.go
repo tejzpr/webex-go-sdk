@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v1/webexsdk"
+	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 )
 
 // Membership represents a Webex membership

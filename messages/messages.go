@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v1/conversation"
-	"github.com/tejzpr/webex-go-sdk/v1/device"
-	"github.com/tejzpr/webex-go-sdk/v1/mercury"
-	"github.com/tejzpr/webex-go-sdk/v1/webexsdk"
+	"github.com/tejzpr/webex-go-sdk/v2/conversation"
+	"github.com/tejzpr/webex-go-sdk/v2/device"
+	"github.com/tejzpr/webex-go-sdk/v2/mercury"
+	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 )
 
 // Message represents a Webex message
