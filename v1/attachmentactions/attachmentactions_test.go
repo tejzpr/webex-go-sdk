@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package attachmentactions
 
 import (
@@ -60,7 +59,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseAction)
+		_ = json.NewEncoder(w).Encode(responseAction)
 	}))
 	defer server.Close()
 
@@ -161,7 +160,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(action)
+		_ = json.NewEncoder(w).Encode(action)
 	}))
 	defer server.Close()
 

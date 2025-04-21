@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package teammemberships
 
 import (
@@ -60,7 +59,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseMembership)
+		_ = json.NewEncoder(w).Encode(responseMembership)
 	}))
 	defer server.Close()
 
@@ -146,7 +145,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(membership)
+		_ = json.NewEncoder(w).Encode(membership)
 	}))
 	defer server.Close()
 
@@ -252,7 +251,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -347,7 +346,7 @@ func TestUpdate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseMembership)
+		_ = json.NewEncoder(w).Encode(responseMembership)
 	}))
 	defer server.Close()
 

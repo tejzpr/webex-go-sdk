@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package people
 
 import (
@@ -39,7 +38,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(person)
+		_ = json.NewEncoder(w).Encode(person)
 	}))
 	defer server.Close()
 
@@ -111,7 +110,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

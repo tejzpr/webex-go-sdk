@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package messages
 
 import (
@@ -59,7 +58,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseMsg)
+		_ = json.NewEncoder(w).Encode(responseMsg)
 	}))
 	defer server.Close()
 
@@ -140,7 +139,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(message)
+		_ = json.NewEncoder(w).Encode(message)
 	}))
 	defer server.Close()
 
@@ -239,7 +238,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 

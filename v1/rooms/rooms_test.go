@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package rooms
 
 import (
@@ -59,7 +58,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseRoom)
+		_ = json.NewEncoder(w).Encode(responseRoom)
 	}))
 	defer server.Close()
 
@@ -149,7 +148,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(room)
+		_ = json.NewEncoder(w).Encode(room)
 	}))
 	defer server.Close()
 
@@ -259,7 +258,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -361,7 +360,7 @@ func TestUpdate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseRoom)
+		_ = json.NewEncoder(w).Encode(responseRoom)
 	}))
 	defer server.Close()
 

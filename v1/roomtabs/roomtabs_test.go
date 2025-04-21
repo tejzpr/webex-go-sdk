@@ -4,7 +4,6 @@
  * See CONTRIBUTORS.md for full contributor list.
  */
 
-
 package roomtabs
 
 import (
@@ -63,7 +62,7 @@ func TestCreate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseTab)
+		_ = json.NewEncoder(w).Encode(responseTab)
 	}))
 	defer server.Close()
 
@@ -149,7 +148,7 @@ func TestGet(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(tab)
+		_ = json.NewEncoder(w).Encode(tab)
 	}))
 	defer server.Close()
 
@@ -252,7 +251,7 @@ func TestList(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -349,7 +348,7 @@ func TestUpdate(t *testing.T) {
 		}
 
 		// Write response
-		json.NewEncoder(w).Encode(responseTab)
+		_ = json.NewEncoder(w).Encode(responseTab)
 	}))
 	defer server.Close()
 
