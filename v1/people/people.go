@@ -343,6 +343,11 @@ func (c *Client) getMe() (*Person, error) {
 	return &person, nil
 }
 
+// GetMe returns the current authenticated user
+func (c *Client) GetMe() (*Person, error) {
+	return c.getMe()
+}
+
 // List returns a list of people
 func (c *Client) List(options *ListOptions) (*PeoplePage, error) {
 	// Handle batch request if IDs are provided

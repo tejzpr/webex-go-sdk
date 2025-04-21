@@ -186,3 +186,75 @@ func TestInferPersonIDFromUUID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetMe(t *testing.T) {
+	// Create a test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check request
+		if r.URL.Path != "/people/me" {
+			t.Errorf("Expected path '/people/me', got '%s'", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("Expected method GET, got '%s'", r.Method)
+		}
+
+		// Write response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		// Create a sample person
+		person := Person{
+			ID:          "me-user-id",
+			Emails:      []string{"me@example.com"},
+			DisplayName: "Current User",
+			FirstName:   "Current",
+			LastName:    "User",
+			Created:     time.Now(),
+		}
+
+		// Write response
+		_ = json.NewEncoder(w).Encode(person)
+	}))
+	defer server.Close()
+
+	// Create a proper client with the test server
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:    server.URL,
+		Timeout:    5 * time.Second,
+		HttpClient: server.Client(),
+	}
+	client, err := webexsdk.NewClient("test-token", config)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Override the base URL
+	client.BaseURL = baseURL
+
+	// Create people plugin
+	peoplePlugin := New(client, nil)
+
+	// Get current user
+	me, err := peoplePlugin.GetMe()
+	if err != nil {
+		t.Fatalf("Error getting me: %v", err)
+	}
+
+	// Check person
+	if me.ID != "me-user-id" {
+		t.Errorf("Expected ID 'me-user-id', got '%s'", me.ID)
+	}
+	if len(me.Emails) != 1 || me.Emails[0] != "me@example.com" {
+		t.Errorf("Expected email 'me@example.com', got '%v'", me.Emails)
+	}
+	if me.DisplayName != "Current User" {
+		t.Errorf("Expected display name 'Current User', got '%s'", me.DisplayName)
+	}
+	if me.FirstName != "Current" {
+		t.Errorf("Expected first name 'Current', got '%s'", me.FirstName)
+	}
+	if me.LastName != "User" {
+		t.Errorf("Expected last name 'User', got '%s'", me.LastName)
+	}
+}
