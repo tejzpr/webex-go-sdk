@@ -14,7 +14,7 @@ A comprehensive, lightweight Go SDK for Cisco Webex API
 [![Lint](https://github.com/tejzpr/webex-go-sdk/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/tejzpr/webex-go-sdk/actions/workflows/golangci-lint.yml)
 [![Codecov](https://codecov.io/gh/tejzpr/webex-go-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/tejzpr/webex-go-sdk)
 [![Release](https://img.shields.io/github/release/tejzpr/webex-go-sdk.svg)](https://github.com/tejzpr/webex-go-sdk/releases/latest)
-[![Go Report Card](https://goreportcard.com/report/github.com/tejzpr/webex-go-sdk/v2)](https://goreportcard.com/report/github.com/tejzpr/webex-go-sdk/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/tejzpr/webex-go-sdk/v2)](https://goreportcard.com/report/github.com/tejzpr/webex-go-sdk/v2)
 
 
 ## Implementation Status
