@@ -106,7 +106,7 @@ fmt.Printf("Message sent: ID=%s\n", createdMessage.ID)
 
 For detailed documentation, examples, and API reference, see:
 
-- [Go Reference Documentation](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk)
+- [Go Reference Documentation](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk/v2)
 - [Examples Directory](./examples)
 - [Cisco Webex API Documentation](https://developer.webex.com/docs/api/getting-started)
 
