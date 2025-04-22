@@ -7,7 +7,7 @@
 
 A comprehensive, lightweight Go SDK for Cisco Webex API
 
-[![Go Reference]([https://pkg.go.dev/badge/github.com/tejzpr/webex-go-sdk.svg)](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk/v2](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk/v2))
+[![Go Reference](https://pkg.go.dev/badge/github.com/tejzpr/webex-go-sdk.svg)](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk/v2)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
 [![Open Source](https://img.shields.io/badge/Open-Source-blue.svg)](https://github.com/tejzpr/webex-go-sdk)
 [![Go Tests](https://github.com/tejzpr/webex-go-sdk/actions/workflows/go-test.yml/badge.svg)](https://github.com/tejzpr/webex-go-sdk/actions/workflows/go-test.yml)
