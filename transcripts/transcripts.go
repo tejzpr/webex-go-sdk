@@ -12,20 +12,25 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 )
 
 // Transcript represents a Webex meeting transcript
 type Transcript struct {
-	ID              string `json:"id,omitempty"`
-	MeetingID       string `json:"meetingId,omitempty"`
-	HostEmail       string `json:"hostEmail,omitempty"`
-	Title           string `json:"title,omitempty"`
-	StartTime       string `json:"startTime,omitempty"`
-	Status          string `json:"status,omitempty"`
-	VttDownloadLink string `json:"vttDownloadLink,omitempty"`
-	TxtDownloadLink string `json:"txtDownloadLink,omitempty"`
+	ID                 string `json:"id,omitempty"`
+	MeetingID          string `json:"meetingId,omitempty"`
+	MeetingTopic       string `json:"meetingTopic,omitempty"`
+	SiteURL            string `json:"siteUrl,omitempty"`
+	ScheduledMeetingID string `json:"scheduledMeetingId,omitempty"`
+	MeetingSeriesID    string `json:"meetingSeriesId,omitempty"`
+	HostUserID         string `json:"hostUserId,omitempty"`
+	HostEmail          string `json:"hostEmail,omitempty"`
+	StartTime          string `json:"startTime,omitempty"`
+	Status             string `json:"status,omitempty"`
+	VttDownloadLink    string `json:"vttDownloadLink,omitempty"`
+	TxtDownloadLink    string `json:"txtDownloadLink,omitempty"`
 }
 
 // Snippet represents a short segment of a transcript spoken by a specific participant
@@ -98,29 +103,43 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 	}
 }
 
-// List returns a list of meeting transcripts
+// List returns a list of meeting transcripts.
+// The Webex API requires the time range between 'from' and 'to' to be within 30 days.
+// If 'from' and 'to' are not specified and no meetingId is provided, the SDK defaults
+// to the last 30 days to ensure results are returned.
 func (c *Client) List(options *ListOptions) (*TranscriptsPage, error) {
 	params := url.Values{}
 
-	if options != nil {
-		if options.MeetingID != "" {
-			params.Set("meetingId", options.MeetingID)
-		}
-		if options.HostEmail != "" {
-			params.Set("hostEmail", options.HostEmail)
-		}
-		if options.SiteURL != "" {
-			params.Set("siteUrl", options.SiteURL)
-		}
-		if options.From != "" {
-			params.Set("from", options.From)
-		}
-		if options.To != "" {
-			params.Set("to", options.To)
-		}
-		if options.Max > 0 {
-			params.Set("max", fmt.Sprintf("%d", options.Max))
-		}
+	if options == nil {
+		options = &ListOptions{}
+	}
+
+	if options.MeetingID != "" {
+		params.Set("meetingId", options.MeetingID)
+	}
+	if options.HostEmail != "" {
+		params.Set("hostEmail", options.HostEmail)
+	}
+	if options.SiteURL != "" {
+		params.Set("siteUrl", options.SiteURL)
+	}
+
+	// Default to last 30 days if no date range and no meetingId specified,
+	// since the Webex API may return empty results without a date range.
+	if options.From == "" && options.To == "" && options.MeetingID == "" {
+		now := time.Now().UTC()
+		options.From = now.AddDate(0, 0, -30).Format(time.RFC3339)
+		options.To = now.Format(time.RFC3339)
+	}
+
+	if options.From != "" {
+		params.Set("from", options.From)
+	}
+	if options.To != "" {
+		params.Set("to", options.To)
+	}
+	if options.Max > 0 {
+		params.Set("max", fmt.Sprintf("%d", options.Max))
 	}
 
 	resp, err := c.webexClient.Request(http.MethodGet, "meetingTranscripts", params, nil)
@@ -150,10 +169,19 @@ func (c *Client) List(options *ListOptions) (*TranscriptsPage, error) {
 	return transcriptsPage, nil
 }
 
+// DownloadOptions contains optional parameters for downloading a transcript
+type DownloadOptions struct {
+	// MeetingID is the unique identifier of the meeting instance.
+	// The Webex API download links include this parameter.
+	MeetingID string
+}
+
 // Download downloads the transcript content in the specified format.
 // Format should be "vtt" or "txt". Defaults to "txt" if empty.
 // Returns the raw transcript content as a string.
-func (c *Client) Download(transcriptID string, format string) (string, error) {
+// An optional DownloadOptions can be provided to include the meetingId parameter
+// as returned by the Webex API in vttDownloadLink/txtDownloadLink.
+func (c *Client) Download(transcriptID string, format string, opts ...*DownloadOptions) (string, error) {
 	if transcriptID == "" {
 		return "", fmt.Errorf("transcriptID is required")
 	}
@@ -168,6 +196,10 @@ func (c *Client) Download(transcriptID string, format string) (string, error) {
 
 	params := url.Values{}
 	params.Set("format", format)
+
+	if len(opts) > 0 && opts[0] != nil && opts[0].MeetingID != "" {
+		params.Set("meetingId", opts[0].MeetingID)
+	}
 
 	path := fmt.Sprintf("meetingTranscripts/%s/download", transcriptID)
 	resp, err := c.webexClient.Request(http.MethodGet, path, params, nil)

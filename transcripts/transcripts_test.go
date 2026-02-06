@@ -53,24 +53,30 @@ func TestList(t *testing.T) {
 
 		transcripts := []Transcript{
 			{
-				ID:              "transcript-1",
-				MeetingID:       "test-meeting-id",
-				HostEmail:       "host@example.com",
-				Title:           "Meeting Transcript 1",
-				StartTime:       "2026-01-15T10:00:00Z",
-				Status:          "available",
-				VttDownloadLink: "https://example.com/transcript-1.vtt",
-				TxtDownloadLink: "https://example.com/transcript-1.txt",
+				ID:                 "transcript-1",
+				MeetingID:          "test-meeting-id",
+				MeetingTopic:       "Meeting Transcript 1",
+				SiteURL:            "example.webex.com",
+				ScheduledMeetingID: "scheduled-1",
+				MeetingSeriesID:    "series-1",
+				HostUserID:         "host-user-1",
+				StartTime:          "2026-01-15T10:00:00Z",
+				Status:             "available",
+				VttDownloadLink:    "https://example.com/transcript-1.vtt",
+				TxtDownloadLink:    "https://example.com/transcript-1.txt",
 			},
 			{
-				ID:              "transcript-2",
-				MeetingID:       "test-meeting-id",
-				HostEmail:       "host@example.com",
-				Title:           "Meeting Transcript 2",
-				StartTime:       "2026-01-16T14:00:00Z",
-				Status:          "available",
-				VttDownloadLink: "https://example.com/transcript-2.vtt",
-				TxtDownloadLink: "https://example.com/transcript-2.txt",
+				ID:                 "transcript-2",
+				MeetingID:          "test-meeting-id",
+				MeetingTopic:       "Meeting Transcript 2",
+				SiteURL:            "example.webex.com",
+				ScheduledMeetingID: "scheduled-2",
+				MeetingSeriesID:    "series-1",
+				HostUserID:         "host-user-1",
+				StartTime:          "2026-01-16T14:00:00Z",
+				Status:             "available",
+				VttDownloadLink:    "https://example.com/transcript-2.vtt",
+				TxtDownloadLink:    "https://example.com/transcript-2.txt",
 			},
 		}
 
@@ -99,8 +105,14 @@ func TestList(t *testing.T) {
 	if page.Items[0].ID != "transcript-1" {
 		t.Errorf("Expected ID 'transcript-1', got '%s'", page.Items[0].ID)
 	}
-	if page.Items[0].Title != "Meeting Transcript 1" {
-		t.Errorf("Expected title 'Meeting Transcript 1', got '%s'", page.Items[0].Title)
+	if page.Items[0].MeetingTopic != "Meeting Transcript 1" {
+		t.Errorf("Expected meetingTopic 'Meeting Transcript 1', got '%s'", page.Items[0].MeetingTopic)
+	}
+	if page.Items[0].SiteURL != "example.webex.com" {
+		t.Errorf("Expected siteUrl 'example.webex.com', got '%s'", page.Items[0].SiteURL)
+	}
+	if page.Items[0].HostUserID != "host-user-1" {
+		t.Errorf("Expected hostUserId 'host-user-1', got '%s'", page.Items[0].HostUserID)
 	}
 	if page.Items[0].Status != "available" {
 		t.Errorf("Expected status 'available', got '%s'", page.Items[0].Status)
@@ -142,6 +154,86 @@ func TestListWithFilters(t *testing.T) {
 	_, err := transcriptsPlugin.List(options)
 	if err != nil {
 		t.Fatalf("Failed to list transcripts with filters: %v", err)
+	}
+}
+
+func TestListDefaultDateRange(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		// When no meetingId and no date range is specified, the SDK should
+		// default to the last 30 days
+		from := r.URL.Query().Get("from")
+		to := r.URL.Query().Get("to")
+
+		if from == "" {
+			t.Error("Expected 'from' query parameter to be set by default")
+		}
+		if to == "" {
+			t.Error("Expected 'to' query parameter to be set by default")
+		}
+
+		// Verify the range is approximately 30 days
+		if from != "" && to != "" {
+			fromTime, err1 := time.Parse(time.RFC3339, from)
+			toTime, err2 := time.Parse(time.RFC3339, to)
+			if err1 == nil && err2 == nil {
+				diff := toTime.Sub(fromTime)
+				if diff < 29*24*time.Hour || diff > 31*24*time.Hour {
+					t.Errorf("Expected ~30 day range, got %v", diff)
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		response := struct {
+			Items []Transcript `json:"items"`
+		}{
+			Items: []Transcript{},
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	})
+	defer server.Close()
+
+	// Call List with nil options - should auto-set date range
+	_, err := transcriptsPlugin.List(nil)
+	if err != nil {
+		t.Fatalf("Failed to list transcripts with default date range: %v", err)
+	}
+}
+
+func TestListByMeetingIDNoDefaultDateRange(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		// When meetingId is specified, no default date range should be added
+		from := r.URL.Query().Get("from")
+		to := r.URL.Query().Get("to")
+		meetingID := r.URL.Query().Get("meetingId")
+
+		if meetingID != "test-meeting-id" {
+			t.Errorf("Expected meetingId 'test-meeting-id', got '%s'", meetingID)
+		}
+		if from != "" {
+			t.Errorf("Expected no 'from' param when meetingId is set, got '%s'", from)
+		}
+		if to != "" {
+			t.Errorf("Expected no 'to' param when meetingId is set, got '%s'", to)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		response := struct {
+			Items []Transcript `json:"items"`
+		}{
+			Items: []Transcript{},
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	})
+	defer server.Close()
+
+	_, err := transcriptsPlugin.List(&ListOptions{MeetingID: "test-meeting-id"})
+	if err != nil {
+		t.Fatalf("Failed to list transcripts by meetingId: %v", err)
 	}
 }
 
@@ -219,6 +311,40 @@ func TestDownloadDefaultFormat(t *testing.T) {
 
 	if content != "transcript content" {
 		t.Errorf("Expected 'transcript content', got '%s'", content)
+	}
+}
+
+func TestDownloadWithMeetingID(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/meetingTranscripts/transcript-1/download" {
+			t.Errorf("Expected path '/meetingTranscripts/transcript-1/download', got '%s'", r.URL.Path)
+		}
+
+		meetingID := r.URL.Query().Get("meetingId")
+		if meetingID != "meeting-123" {
+			t.Errorf("Expected meetingId 'meeting-123', got '%s'", meetingID)
+		}
+
+		format := r.URL.Query().Get("format")
+		if format != "txt" {
+			t.Errorf("Expected format 'txt', got '%s'", format)
+		}
+
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("transcript content with meeting id"))
+	})
+	defer server.Close()
+
+	content, err := transcriptsPlugin.Download("transcript-1", "txt", &DownloadOptions{
+		MeetingID: "meeting-123",
+	})
+	if err != nil {
+		t.Fatalf("Failed to download transcript with meeting ID: %v", err)
+	}
+
+	if content != "transcript content with meeting id" {
+		t.Errorf("Expected 'transcript content with meeting id', got '%s'", content)
 	}
 }
 
