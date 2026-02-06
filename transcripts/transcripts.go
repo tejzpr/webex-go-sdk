@@ -28,9 +28,13 @@ type Transcript struct {
 	HostUserID         string `json:"hostUserId,omitempty"`
 	HostEmail          string `json:"hostEmail,omitempty"`
 	StartTime          string `json:"startTime,omitempty"`
+	EndTime            string `json:"endTime,omitempty"`
+	Duration           int    `json:"duration,omitempty"`
 	Status             string `json:"status,omitempty"`
 	VttDownloadLink    string `json:"vttDownloadLink,omitempty"`
 	TxtDownloadLink    string `json:"txtDownloadLink,omitempty"`
+	Created            string `json:"created,omitempty"`
+	Updated            string `json:"updated,omitempty"`
 }
 
 // Snippet represents a short segment of a transcript spoken by a specific participant
@@ -46,6 +50,7 @@ type Snippet struct {
 	Duration          float64 `json:"duration,omitempty"`
 	OffsetMillisecond int     `json:"offsetMillisecond,omitempty"`
 	Language          string  `json:"language,omitempty"`
+	Confidence        float64 `json:"confidence,omitempty"`
 }
 
 // ListOptions contains the options for listing transcripts
@@ -60,7 +65,11 @@ type ListOptions struct {
 
 // SnippetListOptions contains the options for listing transcript snippets
 type SnippetListOptions struct {
-	Max int `url:"max,omitempty"`
+	Max         int    `url:"max,omitempty"`
+	PersonEmail string `url:"personEmail,omitempty"`
+	PeopleID    string `url:"peopleId,omitempty"`
+	From        string `url:"from,omitempty"`
+	To          string `url:"to,omitempty"`
 }
 
 // TranscriptsPage represents a paginated list of transcripts
@@ -231,6 +240,18 @@ func (c *Client) ListSnippets(transcriptID string, options *SnippetListOptions) 
 	if options != nil {
 		if options.Max > 0 {
 			params.Set("max", fmt.Sprintf("%d", options.Max))
+		}
+		if options.PersonEmail != "" {
+			params.Set("personEmail", options.PersonEmail)
+		}
+		if options.PeopleID != "" {
+			params.Set("peopleId", options.PeopleID)
+		}
+		if options.From != "" {
+			params.Set("from", options.From)
+		}
+		if options.To != "" {
+			params.Set("to", options.To)
 		}
 	}
 

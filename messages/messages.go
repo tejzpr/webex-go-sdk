@@ -26,6 +26,7 @@ import (
 type Message struct {
 	ID              string       `json:"id,omitempty"`
 	RoomID          string       `json:"roomId,omitempty"`
+	RoomType        string       `json:"roomType,omitempty"`
 	ParentID        string       `json:"parentId,omitempty"`
 	ToPersonID      string       `json:"toPersonId,omitempty"`
 	ToPersonEmail   string       `json:"toPersonEmail,omitempty"`
@@ -40,6 +41,7 @@ type Message struct {
 	MentionedPeople []string     `json:"mentionedPeople,omitempty"`
 	MentionedGroups []string     `json:"mentionedGroups,omitempty"`
 	Attachments     []Attachment `json:"attachments,omitempty"`
+	IsVoiceClip     bool         `json:"isVoiceClip,omitempty"`
 }
 
 // Attachment represents a message attachment, such as an adaptive card
@@ -54,8 +56,13 @@ type ListOptions struct {
 	MentionedPeople string `url:"mentionedPeople,omitempty"`
 	Before          string `url:"before,omitempty"`
 	BeforeMessage   string `url:"beforeMessage,omitempty"`
+	After           string `url:"after,omitempty"`
+	AfterMessage    string `url:"afterMessage,omitempty"`
 	Max             int    `url:"max,omitempty"`
 	ThreadID        string `url:"threadId,omitempty"`
+	PersonID        string `url:"personId,omitempty"`
+	PersonEmail     string `url:"personEmail,omitempty"`
+	HasFiles        bool   `url:"hasFiles,omitempty"`
 }
 
 // MessagesPage represents a paginated list of messages
@@ -168,12 +175,32 @@ func (c *Client) List(options *ListOptions) (*MessagesPage, error) {
 		params.Set("beforeMessage", options.BeforeMessage)
 	}
 
+	if options.After != "" {
+		params.Set("after", options.After)
+	}
+
+	if options.AfterMessage != "" {
+		params.Set("afterMessage", options.AfterMessage)
+	}
+
 	if options.Max > 0 {
 		params.Set("max", fmt.Sprintf("%d", options.Max))
 	}
 
 	if options.ThreadID != "" {
 		params.Set("threadId", options.ThreadID)
+	}
+
+	if options.PersonID != "" {
+		params.Set("personId", options.PersonID)
+	}
+
+	if options.PersonEmail != "" {
+		params.Set("personEmail", options.PersonEmail)
+	}
+
+	if options.HasFiles {
+		params.Set("hasFiles", "true")
 	}
 
 	resp, err := c.webexClient.Request(http.MethodGet, "messages", params, nil)

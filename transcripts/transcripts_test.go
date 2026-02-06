@@ -572,3 +572,125 @@ func TestUpdateSnippetValidation(t *testing.T) {
 		t.Error("Expected error for empty text")
 	}
 }
+
+func TestTranscriptNewFields(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		response := struct {
+			Items []Transcript `json:"items"`
+		}{
+			Items: []Transcript{
+				{
+					ID:              "transcript-1",
+					MeetingID:       "meeting-1",
+					MeetingTopic:    "Test Meeting",
+					StartTime:       "2026-01-15T10:00:00Z",
+					EndTime:         "2026-01-15T11:00:00Z",
+					Duration:        3600,
+					Status:          "available",
+					Created:         "2026-01-15T11:05:00Z",
+					Updated:         "2026-01-15T11:10:00Z",
+					VttDownloadLink: "https://example.com/download.vtt",
+					TxtDownloadLink: "https://example.com/download.txt",
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	})
+	defer server.Close()
+
+	page, err := transcriptsPlugin.List(&ListOptions{MeetingID: "meeting-1"})
+	if err != nil {
+		t.Fatalf("Failed to list transcripts: %v", err)
+	}
+
+	if len(page.Items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(page.Items))
+	}
+
+	tr := page.Items[0]
+	if tr.EndTime != "2026-01-15T11:00:00Z" {
+		t.Errorf("Expected endTime '2026-01-15T11:00:00Z', got '%s'", tr.EndTime)
+	}
+	if tr.Duration != 3600 {
+		t.Errorf("Expected duration 3600, got %d", tr.Duration)
+	}
+	if tr.Created != "2026-01-15T11:05:00Z" {
+		t.Errorf("Expected created '2026-01-15T11:05:00Z', got '%s'", tr.Created)
+	}
+	if tr.Updated != "2026-01-15T11:10:00Z" {
+		t.Errorf("Expected updated '2026-01-15T11:10:00Z', got '%s'", tr.Updated)
+	}
+}
+
+func TestSnippetConfidenceField(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		response := struct {
+			Items []Snippet `json:"items"`
+		}{
+			Items: []Snippet{
+				{
+					ID:           "snippet-1",
+					TranscriptID: "transcript-1",
+					Text:         "Hello everyone.",
+					PersonName:   "John Doe",
+					Confidence:   0.95,
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	})
+	defer server.Close()
+
+	page, err := transcriptsPlugin.ListSnippets("transcript-1", nil)
+	if err != nil {
+		t.Fatalf("Failed to list snippets: %v", err)
+	}
+
+	if len(page.Items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(page.Items))
+	}
+
+	if page.Items[0].Confidence != 0.95 {
+		t.Errorf("Expected confidence 0.95, got %f", page.Items[0].Confidence)
+	}
+}
+
+func TestListSnippetsWithFilters(t *testing.T) {
+	transcriptsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("personEmail") != "speaker@example.com" {
+			t.Errorf("Expected personEmail 'speaker@example.com', got '%s'", r.URL.Query().Get("personEmail"))
+		}
+		if r.URL.Query().Get("peopleId") != "people-123" {
+			t.Errorf("Expected peopleId 'people-123', got '%s'", r.URL.Query().Get("peopleId"))
+		}
+		if r.URL.Query().Get("from") != "2026-01-15T10:00:00Z" {
+			t.Errorf("Expected from '2026-01-15T10:00:00Z', got '%s'", r.URL.Query().Get("from"))
+		}
+		if r.URL.Query().Get("to") != "2026-01-15T11:00:00Z" {
+			t.Errorf("Expected to '2026-01-15T11:00:00Z', got '%s'", r.URL.Query().Get("to"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(struct {
+			Items []Snippet `json:"items"`
+		}{Items: []Snippet{}})
+	})
+	defer server.Close()
+
+	_, err := transcriptsPlugin.ListSnippets("transcript-1", &SnippetListOptions{
+		PersonEmail: "speaker@example.com",
+		PeopleID:    "people-123",
+		From:        "2026-01-15T10:00:00Z",
+		To:          "2026-01-15T11:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("Failed to list snippets with filters: %v", err)
+	}
+}

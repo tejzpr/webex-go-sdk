@@ -412,3 +412,312 @@ func TestDeleteValidation(t *testing.T) {
 		t.Error("Expected error for empty meetingID")
 	}
 }
+
+func TestPatch(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/meetings/test-meeting-id" {
+			t.Errorf("Expected path '/meetings/test-meeting-id', got '%s'", r.URL.Path)
+		}
+		if r.Method != http.MethodPatch {
+			t.Errorf("Expected method PATCH, got %s", r.Method)
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("Failed to decode request body: %v", err)
+		}
+
+		if body["title"] != "Patched Title" {
+			t.Errorf("Expected title 'Patched Title', got '%v'", body["title"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(Meeting{
+			ID:    "test-meeting-id",
+			Title: "Patched Title",
+		})
+	})
+	defer server.Close()
+
+	patch := map[string]interface{}{"title": "Patched Title"}
+	result, err := meetingsPlugin.Patch("test-meeting-id", patch)
+	if err != nil {
+		t.Fatalf("Failed to patch meeting: %v", err)
+	}
+
+	if result.Title != "Patched Title" {
+		t.Errorf("Expected title 'Patched Title', got '%s'", result.Title)
+	}
+}
+
+func TestPatchValidation(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Request should not have been sent")
+	})
+	defer server.Close()
+
+	_, err := meetingsPlugin.Patch("", map[string]interface{}{"title": "Test"})
+	if err == nil {
+		t.Error("Expected error for empty meetingID")
+	}
+}
+
+func TestListParticipants(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/meetingParticipants" {
+			t.Errorf("Expected path '/meetingParticipants', got '%s'", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("Expected method GET, got %s", r.Method)
+		}
+		if r.URL.Query().Get("meetingId") != "meeting-instance-123" {
+			t.Errorf("Expected meetingId 'meeting-instance-123', got '%s'", r.URL.Query().Get("meetingId"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		participants := []Participant{
+			{
+				ID:          "part-1",
+				Email:       "host@example.com",
+				DisplayName: "Host User",
+				Host:        true,
+				State:       "end",
+				JoinedTime:  "2026-02-01T10:00:00Z",
+				LeftTime:    "2026-02-01T11:00:00Z",
+			},
+			{
+				ID:          "part-2",
+				Email:       "guest@example.com",
+				DisplayName: "Guest User",
+				Host:        false,
+				CoHost:      false,
+				State:       "end",
+				JoinedTime:  "2026-02-01T10:05:00Z",
+				LeftTime:    "2026-02-01T10:55:00Z",
+				Devices: []ParticipantDevice{
+					{
+						DeviceType: "tp",
+						AudioType:  "voip",
+					},
+				},
+			},
+		}
+
+		response := struct {
+			Items []Participant `json:"items"`
+		}{
+			Items: participants,
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	})
+	defer server.Close()
+
+	page, err := meetingsPlugin.ListParticipants(&ParticipantListOptions{
+		MeetingID: "meeting-instance-123",
+	})
+	if err != nil {
+		t.Fatalf("Failed to list participants: %v", err)
+	}
+
+	if len(page.Items) != 2 {
+		t.Fatalf("Expected 2 participants, got %d", len(page.Items))
+	}
+
+	if page.Items[0].ID != "part-1" {
+		t.Errorf("Expected ID 'part-1', got '%s'", page.Items[0].ID)
+	}
+	if !page.Items[0].Host {
+		t.Error("Expected participant 1 to be host")
+	}
+	if page.Items[1].Email != "guest@example.com" {
+		t.Errorf("Expected email 'guest@example.com', got '%s'", page.Items[1].Email)
+	}
+	if len(page.Items[1].Devices) != 1 {
+		t.Fatalf("Expected 1 device, got %d", len(page.Items[1].Devices))
+	}
+	if page.Items[1].Devices[0].DeviceType != "tp" {
+		t.Errorf("Expected deviceType 'tp', got '%s'", page.Items[1].Devices[0].DeviceType)
+	}
+}
+
+func TestListParticipantsValidation(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Request should not have been sent")
+	})
+	defer server.Close()
+
+	_, err := meetingsPlugin.ListParticipants(nil)
+	if err == nil {
+		t.Error("Expected error for nil options")
+	}
+
+	_, err = meetingsPlugin.ListParticipants(&ParticipantListOptions{})
+	if err == nil {
+		t.Error("Expected error for empty meetingId")
+	}
+}
+
+func TestGetParticipant(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/meetingParticipants/part-1" {
+			t.Errorf("Expected path '/meetingParticipants/part-1', got '%s'", r.URL.Path)
+		}
+		if r.URL.Query().Get("meetingId") != "meeting-123" {
+			t.Errorf("Expected meetingId 'meeting-123', got '%s'", r.URL.Query().Get("meetingId"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(Participant{
+			ID:          "part-1",
+			Email:       "user@example.com",
+			DisplayName: "User Name",
+			Host:        true,
+			State:       "end",
+		})
+	})
+	defer server.Close()
+
+	participant, err := meetingsPlugin.GetParticipant("part-1", "meeting-123")
+	if err != nil {
+		t.Fatalf("Failed to get participant: %v", err)
+	}
+
+	if participant.ID != "part-1" {
+		t.Errorf("Expected ID 'part-1', got '%s'", participant.ID)
+	}
+	if participant.Email != "user@example.com" {
+		t.Errorf("Expected email 'user@example.com', got '%s'", participant.Email)
+	}
+	if !participant.Host {
+		t.Error("Expected participant to be host")
+	}
+}
+
+func TestGetParticipantValidation(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Request should not have been sent")
+	})
+	defer server.Close()
+
+	_, err := meetingsPlugin.GetParticipant("", "meeting-123")
+	if err == nil {
+		t.Error("Expected error for empty participantID")
+	}
+
+	_, err = meetingsPlugin.GetParticipant("part-1", "")
+	if err == nil {
+		t.Error("Expected error for empty meetingID")
+	}
+}
+
+func TestMeetingTelephonyDeserialization(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"id": "meeting-with-telephony",
+			"title": "Telephony Meeting",
+			"start": "2026-02-01T10:00:00Z",
+			"end": "2026-02-01T11:00:00Z",
+			"telephony": {
+				"accessCode": "1234567890",
+				"callInNumbers": [
+					{
+						"label": "US Toll Free",
+						"callInNumber": "+1-800-555-1234",
+						"tollType": "tollFree"
+					},
+					{
+						"label": "US Toll",
+						"callInNumber": "+1-555-555-5678",
+						"tollType": "toll"
+					}
+				],
+				"links": {
+					"globalCallinNumbers": "https://example.com/call",
+					"telephonyTopic": "Meeting Telephony"
+				}
+			},
+			"audioConnectionOptions": {
+				"audioConnectionType": "webexAudio",
+				"enabledTollFreeCallIn": true,
+				"enabledGlobalCallIn": true,
+				"entryAndExitTone": "beep",
+				"muteAttendeeUponEntry": true
+			}
+		}`))
+	})
+	defer server.Close()
+
+	meeting, err := meetingsPlugin.Get("meeting-with-telephony")
+	if err != nil {
+		t.Fatalf("Failed to get meeting: %v", err)
+	}
+
+	if meeting.Telephony == nil {
+		t.Fatal("Expected telephony to be non-nil")
+	}
+	if meeting.Telephony.AccessCode != "1234567890" {
+		t.Errorf("Expected accessCode '1234567890', got '%s'", meeting.Telephony.AccessCode)
+	}
+	if len(meeting.Telephony.CallInNumbers) != 2 {
+		t.Fatalf("Expected 2 call-in numbers, got %d", len(meeting.Telephony.CallInNumbers))
+	}
+	if meeting.Telephony.CallInNumbers[0].TollType != "tollFree" {
+		t.Errorf("Expected tollType 'tollFree', got '%s'", meeting.Telephony.CallInNumbers[0].TollType)
+	}
+	if meeting.Telephony.Links == nil {
+		t.Fatal("Expected telephony links to be non-nil")
+	}
+	if meeting.Telephony.Links.GlobalCallinNumbers != "https://example.com/call" {
+		t.Errorf("Expected globalCallinNumbers link")
+	}
+
+	if meeting.AudioConnectionOptions == nil {
+		t.Fatal("Expected audioConnectionOptions to be non-nil")
+	}
+	if meeting.AudioConnectionOptions.AudioConnectionType != "webexAudio" {
+		t.Errorf("Expected audioConnectionType 'webexAudio', got '%s'", meeting.AudioConnectionOptions.AudioConnectionType)
+	}
+	if !meeting.AudioConnectionOptions.EnabledTollFreeCallIn {
+		t.Error("Expected enabledTollFreeCallIn to be true")
+	}
+	if !meeting.AudioConnectionOptions.MuteAttendeeUponEntry {
+		t.Error("Expected muteAttendeeUponEntry to be true")
+	}
+}
+
+func TestListWithNewFilters(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("siteUrl") != "cisco.webex.com" {
+			t.Errorf("Expected siteUrl 'cisco.webex.com', got '%s'", r.URL.Query().Get("siteUrl"))
+		}
+		if r.URL.Query().Get("integrationTag") != "my-app" {
+			t.Errorf("Expected integrationTag 'my-app', got '%s'", r.URL.Query().Get("integrationTag"))
+		}
+		if r.URL.Query().Get("current") != "true" {
+			t.Errorf("Expected current 'true', got '%s'", r.URL.Query().Get("current"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(struct {
+			Items []Meeting `json:"items"`
+		}{Items: []Meeting{}})
+	})
+	defer server.Close()
+
+	_, err := meetingsPlugin.List(&ListOptions{
+		MeetingType:    "meeting",
+		SiteURL:        "cisco.webex.com",
+		IntegrationTag: "my-app",
+		Current:        true,
+	})
+	if err != nil {
+		t.Fatalf("Failed to list with new filters: %v", err)
+	}
+}
