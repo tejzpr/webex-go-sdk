@@ -112,8 +112,16 @@ func (m *KMSMessage) IsSuccess() bool {
 
 // pendingKMSRequest represents an async KMS request awaiting a Mercury response.
 type pendingKMSRequest struct {
-	responseCh chan []byte         // Receives the decrypted KMS response payload
-	ecdsaKey   *ecdsa.PrivateKey  // For ECDH exchange responses (nil for shared-secret responses)
+	responseCh chan []byte        // Receives the decrypted KMS response payload
+	ecdsaKey   *ecdsa.PrivateKey // For ECDH exchange responses (nil for shared-secret responses)
+}
+
+// inflightKeyRequest tracks an in-progress key retrieval so that concurrent
+// callers requesting the same key URI share a single KMS round-trip.
+type inflightKeyRequest struct {
+	done chan struct{} // Closed when the retrieval completes
+	key  *Key
+	err  error
 }
 
 // Client is the Encryption API client
@@ -125,6 +133,10 @@ type Client struct {
 	// Key cache
 	mu       sync.RWMutex
 	keyCache map[string]*Key
+
+	// In-flight key retrieval deduplication (singleflight pattern)
+	inflightMu  sync.Mutex
+	inflightKeys map[string]*inflightKeyRequest
 
 	// ECDH context for KMS communication
 	ecdhMu       sync.Mutex
@@ -154,6 +166,7 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 		config:          config,
 		httpClient:      httpClient,
 		keyCache:        make(map[string]*Key),
+		inflightKeys:    make(map[string]*inflightKeyRequest),
 		pendingRequests: make(map[string]*pendingKMSRequest),
 	}
 	c.ecdhCond = sync.NewCond(&c.ecdhMu)
@@ -170,7 +183,11 @@ func (c *Client) SetDeviceInfo(deviceURL, userID string) {
 	c.userID = userID
 }
 
-// GetKey retrieves a key from KMS
+// GetKey retrieves a key from KMS.
+// It uses a singleflight pattern: if multiple goroutines request the same
+// key URI concurrently, only one KMS round-trip is made and the result is
+// shared with all waiters. This prevents thundering-herd flooding of KMS
+// when many encrypted messages arrive at once referencing the same key.
 func (c *Client) GetKey(keyURI string) (*Key, error) {
 	// Check cache first (using read lock)
 	if !c.config.DisableCache {
@@ -187,11 +204,39 @@ func (c *Client) GetKey(keyURI string) (*Key, error) {
 		return nil, err
 	}
 
+	// Singleflight: check if a retrieval is already in-flight for this URI
+	c.inflightMu.Lock()
+	if inflight, ok := c.inflightKeys[keyURI]; ok {
+		// Another goroutine is already fetching this key — wait for it
+		c.inflightMu.Unlock()
+		<-inflight.done
+		if inflight.err != nil {
+			return nil, fmt.Errorf("failed to retrieve key from KMS (shared): %w", inflight.err)
+		}
+		return inflight.key, nil
+	}
+
+	// First caller: register and proceed with the retrieval
+	inflight := &inflightKeyRequest{done: make(chan struct{})}
+	c.inflightKeys[keyURI] = inflight
+	c.inflightMu.Unlock()
+
+	// Ensure we always clean up and wake waiters
+	defer func() {
+		close(inflight.done)
+		c.inflightMu.Lock()
+		delete(c.inflightKeys, keyURI)
+		c.inflightMu.Unlock()
+	}()
+
 	// Retrieve key using KMS protocol
 	key, err := c.retrieveKeyFromKMS(keyURI)
 	if err != nil {
+		inflight.err = err
 		return nil, fmt.Errorf("failed to retrieve key from KMS: %w", err)
 	}
+
+	inflight.key = key
 
 	// Cache the key (if caching is enabled)
 	if !c.config.DisableCache {

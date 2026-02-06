@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -82,6 +83,7 @@ type Client struct {
 	connected          bool
 	connecting         bool
 	hasConnected       bool
+	reconnecting       atomic.Bool // Guards against concurrent reconnection attempts
 	mu                 sync.Mutex
 	eventHandlers      map[string][]EventHandler
 	closeCh            chan struct{}
@@ -744,12 +746,21 @@ func (c *Client) handlePong(data string) error {
 	return c.conn.SetReadDeadline(time.Time{})
 }
 
-// reconnect attempts to reconnect to the Mercury service
+// reconnect attempts to reconnect to the Mercury service.
+// Uses an atomic CAS guard to ensure exactly one reconnection attempt runs
+// at a time, even if multiple goroutines (listen, startPingPong) detect the
+// disconnection concurrently.
 func (c *Client) reconnect() {
+	// Atomic CAS: only proceed if no other goroutine is already reconnecting
+	if !c.reconnecting.CompareAndSwap(false, true) {
+		return
+	}
+
 	c.mu.Lock()
-	// If we're already trying to reconnect or already disconnected, do nothing
-	if !c.connected || c.connecting {
+	// Double-check under lock
+	if c.connecting {
 		c.mu.Unlock()
+		c.reconnecting.Store(false)
 		return
 	}
 
@@ -768,6 +779,8 @@ func (c *Client) reconnect() {
 
 	// Try to reconnect
 	go func() {
+		defer c.reconnecting.Store(false)
+
 		wsURL := c.getReconnectURL(deviceProvider, customURL)
 		if wsURL == "" {
 			c.mu.Lock()

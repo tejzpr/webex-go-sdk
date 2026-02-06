@@ -141,7 +141,10 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 	}
 }
 
-// ProcessActivityEvent processes a conversation activity event from Mercury
+// ProcessActivityEvent processes a conversation activity event from Mercury.
+// This method parses the activity but does NOT decrypt message content inline.
+// Decryption happens in the dispatched goroutine (see dispatchActivity) so
+// the Mercury event handler returns immediately and doesn't block on KMS.
 func (c *Client) ProcessActivityEvent(event *mercury.Event) (*Activity, error) {
 	// Check if we have the necessary data
 	if event.Data == nil {
@@ -177,13 +180,8 @@ func (c *Client) ProcessActivityEvent(event *mercury.Event) (*Activity, error) {
 	activity.EncryptionKeyURL = encryptionKeyURL
 	activity.MessageType = MessageType(activity.Verb)
 
-	// Process message content if needed
-	if isMessageActivity(activity.Verb) {
-		if err := c.processMessageContent(&activity); err != nil {
-			// Log error but continue with processing
-			fmt.Printf("Error processing message content: %v\n", err)
-		}
-	}
+	// NOTE: Decryption is deferred to dispatchActivity goroutines (Option B)
+	// so the Mercury event handler is non-blocking.
 
 	return &activity, nil
 }
@@ -416,7 +414,11 @@ func (c *Client) processEventKMSMessages(event *mercury.Event) {
 	}
 }
 
-// dispatchActivity dispatches an activity to all registered handlers
+// dispatchActivity dispatches an activity to all registered handlers.
+// For message activities (post/share), decryption happens inside each
+// dispatched goroutine so the caller (Mercury event handler) is non-blocking.
+// The handler goroutine may see a brief delay while the key is retrieved from
+// KMS, but the WebSocket read loop is never blocked.
 func (c *Client) dispatchActivity(activity *Activity) {
 	c.mu.RLock()
 	// Get verb-specific handlers
@@ -425,17 +427,30 @@ func (c *Client) dispatchActivity(activity *Activity) {
 	wildcardHandlers, hasWildcardHandlers := c.handlers[WildcardHandler]
 	c.mu.RUnlock()
 
+	// Wrap each handler invocation to decrypt-then-call
+	dispatch := func(handler ActivityHandler) {
+		go func() {
+			// Decrypt message content inside the goroutine (Option B)
+			if isMessageActivity(activity.Verb) {
+				if err := c.processMessageContent(activity); err != nil {
+					fmt.Printf("Error processing message content: %v\n", err)
+				}
+			}
+			handler(activity)
+		}()
+	}
+
 	// Call verb-specific handlers
 	if hasHandlers {
 		for _, handler := range handlers {
-			go handler(activity)
+			dispatch(handler)
 		}
 	}
 
 	// Call wildcard handlers
 	if hasWildcardHandlers {
 		for _, handler := range wildcardHandlers {
-			go handler(activity)
+			dispatch(handler)
 		}
 	}
 }

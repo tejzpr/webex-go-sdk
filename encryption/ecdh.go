@@ -27,6 +27,13 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 )
 
+const (
+	// ecdhTTL is the maximum lifetime of an ECDH context before it is
+	// considered expired and must be renegotiated. This matches the typical
+	// server-side expiry of ECDHE keys on the Webex KMS.
+	ecdhTTL = 1 * time.Hour
+)
+
 // ECDHContext holds the ECDH key exchange state for KMS communication.
 // After a successful key exchange, the shared secret is used to wrap/unwrap
 // all subsequent KMS requests and responses using dir+A256GCM.
@@ -48,6 +55,8 @@ type KMSInfo struct {
 // getOrCreateECDH returns the current ECDH context, creating one if needed.
 // Uses sync.Cond to avoid deadlock: the lock is released while the ECDH
 // exchange is in progress, allowing ProcessKMSMessages to run concurrently.
+// A TTL check ensures stale contexts are proactively refreshed before the
+// server rejects them.
 func (c *Client) getOrCreateECDH() (*ECDHContext, error) {
 	c.ecdhMu.Lock()
 
@@ -56,11 +65,15 @@ func (c *Client) getOrCreateECDH() (*ECDHContext, error) {
 		c.ecdhCond.Wait()
 	}
 
-	// Check if context was created by the other goroutine
+	// Check if context was created by the other goroutine and is still fresh
 	if c.ecdhCtx != nil {
-		ctx := c.ecdhCtx
-		c.ecdhMu.Unlock()
-		return ctx, nil
+		if time.Since(c.ecdhCtx.createdAt) < ecdhTTL {
+			ctx := c.ecdhCtx
+			c.ecdhMu.Unlock()
+			return ctx, nil
+		}
+		// Context expired — clear it so we create a fresh one
+		c.ecdhCtx = nil
 	}
 
 	// Mark as creating and release lock (avoids deadlock with ProcessKMSMessages)

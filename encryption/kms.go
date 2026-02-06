@@ -60,7 +60,31 @@ func (c *Client) retrieveKeyFromKMS(keyURI string) (*Key, error) {
 	return key, nil
 }
 
+// isECDHSessionError determines whether a KMS retrieval error indicates
+// that the ECDH session itself is invalid (shared secret mismatch, rejected
+// credentials, etc.) vs. a transient error (network timeout, server 500, rate
+// limit) where retrying with the same ECDH context is appropriate.
+func isECDHSessionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	// HTTP 400/403 from KMS typically mean the shared secret or kid is wrong
+	if strings.Contains(msg, "status 400") || strings.Contains(msg, "status 403") {
+		return true
+	}
+	// Decryption failures mean the shared secret doesn't match
+	if strings.Contains(msg, "error decrypting") || strings.Contains(msg, "failed with status") {
+		return true
+	}
+	// Everything else (timeouts, 500s, 429s, network errors) is transient
+	return false
+}
+
 // retrieveKeyViaECDH retrieves a key using the ECDH-encrypted KMS protocol.
+// On failure it classifies the error: ECDH-session errors (400, 403, decrypt
+// failures) trigger ECDH invalidation + re-exchange, while transient errors
+// (timeouts, 500, rate limits) are retried with the existing ECDH context.
 func (c *Client) retrieveKeyViaECDH(keyURI string) (*Key, error) {
 	// Ensure ECDH context exists
 	ecdhCtx, err := c.getOrCreateECDH()
@@ -71,14 +95,22 @@ func (c *Client) retrieveKeyViaECDH(keyURI string) (*Key, error) {
 	// Build and send the KMS retrieve request
 	key, err := c.doKMSRetrieve(keyURI, ecdhCtx)
 	if err != nil {
-		// If the request fails, invalidate ECDH and retry once
-		// (the shared secret may have expired on the server side)
-		c.invalidateECDH()
-		ecdhCtx, retryErr := c.getOrCreateECDH()
-		if retryErr != nil {
-			return nil, fmt.Errorf("retry ECDH failed: %w (original: %v)", retryErr, err)
+		if isECDHSessionError(err) {
+			// ECDH session is invalid — invalidate and re-exchange
+			c.invalidateECDH()
+			ecdhCtx, retryErr := c.getOrCreateECDH()
+			if retryErr != nil {
+				return nil, fmt.Errorf("retry ECDH failed: %w (original: %v)", retryErr, err)
+			}
+			key, retryErr = c.doKMSRetrieve(keyURI, ecdhCtx)
+			if retryErr != nil {
+				return nil, fmt.Errorf("retry KMS retrieve failed: %w (original: %v)", retryErr, err)
+			}
+			return key, nil
 		}
-		key, retryErr = c.doKMSRetrieve(keyURI, ecdhCtx)
+
+		// Transient error — retry once with the same ECDH context
+		key, retryErr := c.doKMSRetrieve(keyURI, ecdhCtx)
 		if retryErr != nil {
 			return nil, fmt.Errorf("retry KMS retrieve failed: %w (original: %v)", retryErr, err)
 		}
