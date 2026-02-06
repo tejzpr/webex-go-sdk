@@ -29,6 +29,9 @@ func main() {
 	}
 
 	// Example 1: List Transcripts
+	// Note: The Webex API requires a date range within 30 days for listing transcripts.
+	// If From/To are not specified (and no MeetingID is set), the SDK defaults to
+	// the last 30 days automatically.
 	fmt.Println("Listing transcripts...")
 	transcriptsPage, err := client.Transcripts().List(&transcripts.ListOptions{
 		Max: 10,
@@ -38,23 +41,29 @@ func main() {
 	}
 	fmt.Printf("Found %d transcripts\n", len(transcriptsPage.Items))
 	for i, t := range transcriptsPage.Items {
-		fmt.Printf("%d. %s (Status: %s)\n", i+1, t.Title, t.Status)
+		fmt.Printf("%d. %s (Status: %s)\n", i+1, t.MeetingTopic, t.Status)
 		fmt.Printf("   Meeting ID: %s\n", t.MeetingID)
+		fmt.Printf("   Site URL: %s\n", t.SiteURL)
 		fmt.Printf("   Start Time: %s\n", t.StartTime)
 	}
 
 	if len(transcriptsPage.Items) == 0 {
 		fmt.Println("\nNo transcripts found. Transcripts are generated when meeting recording is enabled with Webex Assistant or Closed Captions.")
+		fmt.Println("Since February 2024, transcripts are also auto-generated when Cisco AI Assistant for Webex is enabled during a meeting.")
 		return
 	}
 
 	// Use the first transcript for subsequent examples
 	transcriptID := transcriptsPage.Items[0].ID
+	meetingID := transcriptsPage.Items[0].MeetingID
 	fmt.Printf("\nUsing transcript ID: %s\n", transcriptID)
+	fmt.Printf("Meeting ID: %s\n", meetingID)
 
-	// Example 2: Download Transcript as TXT
+	// Example 2: Download Transcript as TXT (with meetingId for best results)
 	fmt.Println("\nDownloading transcript as TXT...")
-	txtContent, err := client.Transcripts().Download(transcriptID, "txt")
+	txtContent, err := client.Transcripts().Download(transcriptID, "txt", &transcripts.DownloadOptions{
+		MeetingID: meetingID,
+	})
 	if err != nil {
 		log.Printf("Failed to download transcript as TXT: %v\n", err)
 	} else {
@@ -68,7 +77,9 @@ func main() {
 
 	// Example 3: Download Transcript as VTT
 	fmt.Println("\nDownloading transcript as VTT...")
-	vttContent, err := client.Transcripts().Download(transcriptID, "vtt")
+	vttContent, err := client.Transcripts().Download(transcriptID, "vtt", &transcripts.DownloadOptions{
+		MeetingID: meetingID,
+	})
 	if err != nil {
 		log.Printf("Failed to download transcript as VTT: %v\n", err)
 	} else {
