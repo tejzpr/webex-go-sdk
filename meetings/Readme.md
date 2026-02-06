@@ -84,10 +84,9 @@ if err != nil {
 List meetings with various filter options:
 
 ```go
+// List meeting series (recurring definitions)
 meetingsPage, err := client.Meetings().List(&meetings.ListOptions{
     MeetingType: "meetingSeries",
-    From:        "2026-01-01T00:00:00Z",
-    To:          "2026-12-31T23:59:59Z",
     Max:         50,
 })
 if err != nil {
@@ -99,6 +98,28 @@ if err != nil {
     }
 }
 ```
+
+#### Listing Past Meeting Instances
+
+To list actual meeting instances that have ended, you **must** specify both `MeetingType` and `State`. The Webex API requires `meetingType` whenever `state` is used as a filter.
+
+```go
+pastMeetings, err := client.Meetings().List(&meetings.ListOptions{
+    MeetingType: "meeting",  // Required: "meeting" for actual instances
+    State:       "ended",    // Requires meetingType to be set
+    Max:         10,
+})
+if err != nil {
+    log.Printf("Failed to list past meetings: %v", err)
+} else {
+    for _, m := range pastMeetings.Items {
+        fmt.Printf("%s - Recording: %v, Transcript: %v\n",
+            m.Title, m.HasRecording, m.HasTranscription)
+    }
+}
+```
+
+> **Important:** If you set `State` without `MeetingType`, the SDK will return an error. This matches the Webex API requirement.
 
 ### Updating a Meeting
 
@@ -141,25 +162,40 @@ if err != nil {
 
 ```go
 type Meeting struct {
-    ID                          string     // Unique identifier of the meeting
-    Title                       string     // Title of the meeting
-    Agenda                      string     // Agenda/description of the meeting
-    Password                    string     // Meeting password
-    Start                       string     // Start time in ISO 8601 format
-    End                         string     // End time in ISO 8601 format
-    Timezone                    string     // Timezone (e.g., "America/New_York")
-    Recurrence                  string     // Recurrence pattern (RFC 2445)
-    EnabledAutoRecordMeeting    bool       // Auto-record the meeting
-    AllowAnyUserToBeCoHost      bool       // Allow any user to be co-host
-    MeetingType                 string     // Type: meetingSeries, scheduledMeeting, meeting
-    State                       string     // State: active, scheduled, ready, lobby, connected, started, ended, missed, expired
-    HostUserID                  string     // Host user ID
-    HostDisplayName             string     // Host display name
-    HostEmail                   string     // Host email address
-    SipAddress                  string     // SIP address for video systems
-    WebLink                     string     // Link to join the meeting
-    MeetingNumber               string     // Meeting number
-    Created                     *time.Time // Time when the meeting was created
+    ID                           string     // Unique identifier of the meeting
+    MeetingSeriesID              string     // ID of the parent meeting series
+    ScheduledMeetingID           string     // ID of the scheduled meeting occurrence
+    Title                        string     // Title of the meeting
+    Agenda                       string     // Agenda/description of the meeting
+    Password                     string     // Meeting password
+    Start                        string     // Start time in ISO 8601 format
+    End                          string     // End time in ISO 8601 format
+    Timezone                     string     // Timezone (e.g., "America/New_York")
+    Recurrence                   string     // Recurrence pattern (RFC 2445)
+    EnabledAutoRecordMeeting     bool       // Auto-record the meeting
+    AllowAnyUserToBeCoHost       bool       // Allow any user to be co-host
+    MeetingType                  string     // Type: meetingSeries, scheduledMeeting, meeting
+    State                        string     // State: active, scheduled, ready, lobby, connected, started, ended, missed, expired
+    ScheduledType                string     // Scheduled type: meeting, webinar, personalRoomMeeting
+    HostUserID                   string     // Host user ID
+    HostDisplayName              string     // Host display name
+    HostEmail                    string     // Host email address
+    SipAddress                   string     // SIP address for video systems
+    WebLink                      string     // Link to join the meeting
+    MeetingNumber                string     // Meeting number
+    SiteURL                      string     // Webex site URL (e.g., "example.webex.com")
+    EnabledBreakoutSessions      bool       // Breakout sessions enabled
+    IntegrationTags              []string   // Integration metadata tags
+    HasChat                      bool       // Whether the meeting had chat
+    HasRecording                 bool       // Whether the meeting was recorded
+    HasTranscription             bool       // Whether a transcript is available
+    HasSummary                   bool       // Whether an AI summary is available
+    HasClosedCaption             bool       // Whether closed captions were used
+    HasPolls                     bool       // Whether polls were used
+    HasQA                        bool       // Whether Q&A was used
+    HasRegistration              bool       // Whether registration was enabled
+    HasRegistrants               bool       // Whether there are registrants
+    Created                      *time.Time // Time when the meeting was created
 }
 ```
 
@@ -177,6 +213,12 @@ type ListOptions struct {
     Max           int    // Maximum number of results to return
 }
 ```
+
+## Limitations
+
+- The `state` filter requires `meetingType` to also be specified (Webex API requirement)
+- Without `meetingType` specified, the API returns meeting series (recurring definitions) rather than actual meeting instances
+- Use `meetingType=meeting` with `state=ended` to list past meetings that have actually occurred
 
 ## Related Resources
 

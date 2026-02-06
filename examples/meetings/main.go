@@ -28,20 +28,40 @@ func main() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	// Example 1: List Meetings
-	fmt.Println("Listing meetings...")
+	// Example 1: List Meeting Series (active/scheduled meetings)
+	fmt.Println("Listing meeting series...")
 	meetingsPage, err := client.Meetings().List(&meetings.ListOptions{
 		Max: 10,
 	})
 	if err != nil {
 		log.Fatalf("Failed to list meetings: %v", err)
 	}
-	fmt.Printf("Found %d meetings\n", len(meetingsPage.Items))
+	fmt.Printf("Found %d meeting series\n", len(meetingsPage.Items))
 	for i, m := range meetingsPage.Items {
-		fmt.Printf("%d. %s (State: %s)\n", i+1, m.Title, m.State)
+		fmt.Printf("%d. %s (State: %s, Type: %s)\n", i+1, m.Title, m.State, m.MeetingType)
 		fmt.Printf("   Start: %s | End: %s\n", m.Start, m.End)
 		if m.WebLink != "" {
 			fmt.Printf("   Link: %s\n", m.WebLink)
+		}
+	}
+
+	// Example 1b: List Past Meeting Instances
+	// Note: The Webex API requires meetingType when using the state filter.
+	// Use meetingType="meeting" to get actual meeting instances (not series).
+	fmt.Println("\nListing past meeting instances...")
+	pastMeetingsPage, err := client.Meetings().List(&meetings.ListOptions{
+		MeetingType: "meeting",
+		State:       "ended",
+		Max:         5,
+	})
+	if err != nil {
+		log.Printf("Failed to list past meetings: %v\n", err)
+	} else {
+		fmt.Printf("Found %d past meetings\n", len(pastMeetingsPage.Items))
+		for i, m := range pastMeetingsPage.Items {
+			fmt.Printf("%d. %s (State: %s)\n", i+1, m.Title, m.State)
+			fmt.Printf("   Start: %s | End: %s\n", m.Start, m.End)
+			fmt.Printf("   Has Recording: %v | Has Transcription: %v\n", m.HasRecording, m.HasTranscription)
 		}
 	}
 
