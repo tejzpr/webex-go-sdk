@@ -160,6 +160,14 @@ func (c *Client) Register() error {
 		return fmt.Errorf("error parsing response: %w", err)
 	}
 
+	// Also parse the full response into DeviceDTO to capture all fields (userId, etc.)
+	var deviceDTO DeviceDTO
+	if err := json.Unmarshal(respBody, &deviceDTO); err == nil {
+		c.mu.Lock()
+		c.device = &deviceDTO
+		c.mu.Unlock()
+	}
+
 	// Store the device info and update status
 	c.mu.Lock()
 	c.deviceInfo = &deviceResp

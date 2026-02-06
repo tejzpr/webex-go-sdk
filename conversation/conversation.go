@@ -354,19 +354,49 @@ func (c *Client) EncryptionClient() *encryption.Client {
 }
 
 // processEventKMSMessages extracts and processes KMS messages from a Mercury event.
-// KMS messages can arrive in the event data as "encryption.kmsMessages" and contain
-// key updates or rotations that need to be decrypted and cached.
+// KMS messages can arrive in various locations within the event data:
+// - event.Data["encryption"]["kmsMessages"] (nested object)
+// - event.Data["encryption.kmsMessages"] (dotted key)
+// - event.Data["kmsMessages"] (direct)
+// These contain JWE strings that may be ECDH exchange responses, key retrieval
+// responses, or key rotation notifications.
 func (c *Client) processEventKMSMessages(event *mercury.Event) {
 	if event.Data == nil || c.encryptionClient == nil {
 		return
 	}
 
-	// Check for kmsMessages in the event data
-	kmsMessages, ok := event.Data["encryption.kmsMessages"].([]interface{})
-	if !ok {
-		// Also check nested under "encryption" key
-		if encData, ok := event.Data["encryption"].(map[string]interface{}); ok {
-			kmsMessages, _ = encData["kmsMessages"].([]interface{})
+	var kmsMessages []interface{}
+
+	// Path 1: Nested under "encryption" key as map
+	if encData, ok := event.Data["encryption"].(map[string]interface{}); ok {
+		if msgs, ok := encData["kmsMessages"].([]interface{}); ok {
+			kmsMessages = msgs
+		}
+	}
+
+	// Path 2: Dotted key "encryption.kmsMessages"
+	if len(kmsMessages) == 0 {
+		if msgs, ok := event.Data["encryption.kmsMessages"].([]interface{}); ok {
+			kmsMessages = msgs
+		}
+	}
+
+	// Path 3: Direct "kmsMessages" key
+	if len(kmsMessages) == 0 {
+		if msgs, ok := event.Data["kmsMessages"].([]interface{}); ok {
+			kmsMessages = msgs
+		}
+	}
+
+	// Path 4: "encryption" key contains a JSON string that needs parsing
+	if len(kmsMessages) == 0 {
+		if encStr, ok := event.Data["encryption"].(string); ok {
+			var encObj map[string]interface{}
+			if err := json.Unmarshal([]byte(encStr), &encObj); err == nil {
+				if msgs, ok := encObj["kmsMessages"].([]interface{}); ok {
+					kmsMessages = msgs
+				}
+			}
 		}
 	}
 
@@ -376,7 +406,7 @@ func (c *Client) processEventKMSMessages(event *mercury.Event) {
 
 	jweStrings := make([]string, 0, len(kmsMessages))
 	for _, msg := range kmsMessages {
-		if s, ok := msg.(string); ok {
+		if s, ok := msg.(string); ok && s != "" {
 			jweStrings = append(jweStrings, s)
 		}
 	}

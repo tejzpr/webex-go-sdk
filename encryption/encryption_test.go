@@ -15,9 +15,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/http"
-	"net/http/httptest"
 	"testing"
+	"time"
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
@@ -376,7 +375,7 @@ func TestWrapUnwrapWithSharedSecret(t *testing.T) {
 	plaintext := []byte(`{"method":"retrieve","uri":"kms://test/keys/123"}`)
 
 	// Wrap
-	wrapped, err := wrapWithSharedSecret(plaintext, sharedSecret)
+	wrapped, err := wrapWithSharedSecret(plaintext, sharedSecret, "kms://test/ecdhe/test-kid")
 	if err != nil {
 		t.Fatalf("wrapWithSharedSecret() error: %v", err)
 	}
@@ -404,7 +403,7 @@ func TestUnwrapWithWrongSecret(t *testing.T) {
 	rand.Read(secret1)
 	rand.Read(secret2)
 
-	wrapped, err := wrapWithSharedSecret([]byte("test data"), secret1)
+	wrapped, err := wrapWithSharedSecret([]byte("test data"), secret1, "")
 	if err != nil {
 		t.Fatalf("wrapWithSharedSecret() error: %v", err)
 	}
@@ -588,7 +587,7 @@ func TestECDHSharedSecretDerivation(t *testing.T) {
 
 	// Verify the shared secret can be used for JWE wrap/unwrap
 	testPayload := []byte(`{"method":"retrieve","uri":"kms://test/keys/123"}`)
-	wrapped, err := wrapWithSharedSecret(testPayload, clientSharedSecret)
+	wrapped, err := wrapWithSharedSecret(testPayload, clientSharedSecret, "")
 	if err != nil {
 		t.Fatalf("wrap error: %v", err)
 	}
@@ -805,7 +804,7 @@ func TestProcessKMSMessages(t *testing.T) {
 	}
 
 	msgJSON, _ := json.Marshal(kmsMsg)
-	wrapped, err := wrapWithSharedSecret(msgJSON, sharedSecret)
+	wrapped, err := wrapWithSharedSecret(msgJSON, sharedSecret, "")
 	if err != nil {
 		t.Fatalf("failed to wrap KMS message: %v", err)
 	}
@@ -860,51 +859,72 @@ func TestGetKeyCached(t *testing.T) {
 	}
 }
 
-func TestRetrieveKeyDirectMockServer(t *testing.T) {
-	// Create a mock KMS server that returns a key
-	key := &Key{
-		URI: "kms://mock-kms.example.com/keys/direct-test",
-		JWK: JWK{
-			Kty: "oct",
-			K:   base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
-			Kid: "direct-test",
-		},
-	}
-
-	kmsResponse := KMSMessage{
-		Status: "success",
-		Key:    key,
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(kmsResponse)
-	}))
-	defer server.Close()
-
-	// Create client with mock HTTP client
+func TestPendingRequestMechanism(t *testing.T) {
+	// Test the async pending request registration and delivery
 	webexClient, _ := webexsdk.NewClient("test-token", nil)
-	client := New(webexClient, &Config{
-		HTTPTimeout:    defaultTimeout,
-		DefaultCluster: "a",
-		DisableCache:   false,
-	})
-	client.httpClient = server.Client()
+	client := New(webexClient, nil)
 
-	// Test the direct retrieval path directly (bypassing ECDH)
-	// We construct a URI that will hit our mock server
-	// Since retrieveKeyDirect builds the URL from the KMS URI domain,
-	// we test it as a unit by calling it directly
-	result, err := client.retrieveKeyDirect("kms://mock-kms.example.com/keys/direct-test")
+	requestID := "test-req-123"
 
-	// The URL won't match our mock server, so it will fail with a connection error.
-	// That's expected. Instead, test the mock server integration by overriding the HTTP call.
-	if err != nil {
-		// This is expected - the constructed URL won't match the mock server.
-		// The important thing is that the function doesn't panic.
-		t.Logf("Expected retrieval error (URL mismatch with mock): %v", err)
+	// Register a pending request
+	ch := client.registerPendingRequest(requestID, nil)
+
+	// Simulate delivering a response (as ProcessKMSMessages would)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		client.pendingMu.Lock()
+		if req, ok := client.pendingRequests[requestID]; ok {
+			payload := []byte(`{"status":200,"key":{"uri":"kms://test/keys/1","jwk":{"kty":"oct","k":"test"}}}`)
+			req.responseCh <- payload
+			delete(client.pendingRequests, requestID)
+		}
+		client.pendingMu.Unlock()
+	}()
+
+	// Wait for the response
+	select {
+	case payload := <-ch:
+		var msg KMSMessage
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			t.Fatalf("Failed to parse response: %v", err)
+		}
+		if !msg.IsSuccess() {
+			t.Errorf("Expected success status, got %v", msg.Status)
+		}
+		if msg.Key == nil || msg.Key.URI != "kms://test/keys/1" {
+			t.Errorf("Expected key URI kms://test/keys/1, got %v", msg.Key)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for pending request response")
 	}
-	_ = result
+
+	// Verify cleanup
+	client.unregisterPendingRequest(requestID)
+	client.pendingMu.Lock()
+	_, exists := client.pendingRequests[requestID]
+	client.pendingMu.Unlock()
+	if exists {
+		t.Error("Pending request not cleaned up after unregister")
+	}
+}
+
+func TestKmsClusterFromDomain(t *testing.T) {
+	tests := []struct {
+		domain  string
+		def     string
+		want    string
+	}{
+		{"kms-a.wbx2.com", "kms-a.wbx2.com", "kms-a.wbx2.com"},
+		{"kms-cisco.wbx2.com", "kms-a.wbx2.com", "kms-cisco.wbx2.com"},
+		{"cisco.com", "kms-a.wbx2.com", "kms-a.wbx2.com"},
+		{"", "kms-a.wbx2.com", "kms-a.wbx2.com"},
+	}
+	for _, tt := range tests {
+		got := kmsClusterFromDomain(tt.domain, tt.def)
+		if got != tt.want {
+			t.Errorf("kmsClusterFromDomain(%q, %q) = %q, want %q", tt.domain, tt.def, got, tt.want)
+		}
+	}
 }
 
 // --- End-to-End Decrypt Test ---

@@ -7,6 +7,7 @@
 package encryption
 
 import (
+	"crypto/ecdsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,6 +24,9 @@ const (
 	kmsURIPrefix   = "kms://"
 	defaultCluster = "a"
 	defaultTimeout = 10 * time.Second
+
+	// kmsResponseTimeout is how long to wait for an async KMS response via Mercury.
+	kmsResponseTimeout = 30 * time.Second
 )
 
 // Config holds the configuration for the Encryption plugin
@@ -92,18 +96,24 @@ type KMSMessage struct {
 }
 
 // IsSuccess checks if the KMS response indicates success.
-// Handles both string ("success") and numeric (200) status values.
+// Handles both string ("success") and numeric (200/201) status values.
 func (m *KMSMessage) IsSuccess() bool {
 	switch s := m.Status.(type) {
 	case string:
-		return s == "success" || s == "200"
+		return s == "success" || s == "200" || s == "201"
 	case float64:
-		return int(s) == 200
+		return int(s) == 200 || int(s) == 201
 	case int:
-		return s == 200
+		return s == 200 || s == 201
 	default:
 		return false
 	}
+}
+
+// pendingKMSRequest represents an async KMS request awaiting a Mercury response.
+type pendingKMSRequest struct {
+	responseCh chan []byte         // Receives the decrypted KMS response payload
+	ecdsaKey   *ecdsa.PrivateKey  // For ECDH exchange responses (nil for shared-secret responses)
 }
 
 // Client is the Encryption API client
@@ -117,10 +127,16 @@ type Client struct {
 	keyCache map[string]*Key
 
 	// ECDH context for KMS communication
-	ecdhMu    sync.Mutex
-	ecdhCtx   *ECDHContext
-	deviceURL string // Device URL used as KMS client ID
-	userID    string // User ID for KMS requests
+	ecdhMu       sync.Mutex
+	ecdhCond     *sync.Cond
+	ecdhCreating bool
+	ecdhCtx      *ECDHContext
+	deviceURL    string // Device URL used as KMS client ID
+	userID       string // User ID for KMS requests
+
+	// Pending async KMS requests (correlated via requestId)
+	pendingMu       sync.Mutex
+	pendingRequests map[string]*pendingKMSRequest
 }
 
 // New creates a new Encryption plugin
@@ -133,12 +149,15 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 		Timeout: config.HTTPTimeout,
 	}
 
-	return &Client{
-		webexClient: webexClient,
-		config:      config,
-		httpClient:  httpClient,
-		keyCache:    make(map[string]*Key),
+	c := &Client{
+		webexClient:     webexClient,
+		config:          config,
+		httpClient:      httpClient,
+		keyCache:        make(map[string]*Key),
+		pendingRequests: make(map[string]*pendingKMSRequest),
 	}
+	c.ecdhCond = sync.NewCond(&c.ecdhMu)
+	return c
 }
 
 // SetDeviceInfo sets the device URL and user ID for KMS communication.
@@ -195,30 +214,139 @@ func (c *Client) CacheKey(key *Key) {
 	c.mu.Unlock()
 }
 
+// registerPendingRequest registers an async KMS request that is waiting for a
+// response via Mercury WebSocket. Returns a channel that will receive the
+// decrypted response payload. For ECDH exchange requests, pass the ECDSA
+// private key so ProcessKMSMessages can decrypt the ECDH-ES response.
+func (c *Client) registerPendingRequest(requestID string, ecdsaKey *ecdsa.PrivateKey) chan []byte {
+	ch := make(chan []byte, 1)
+	c.pendingMu.Lock()
+	c.pendingRequests[requestID] = &pendingKMSRequest{
+		responseCh: ch,
+		ecdsaKey:   ecdsaKey,
+	}
+	c.pendingMu.Unlock()
+	return ch
+}
+
+// unregisterPendingRequest removes a pending request (cleanup after timeout or delivery).
+func (c *Client) unregisterPendingRequest(requestID string) {
+	c.pendingMu.Lock()
+	delete(c.pendingRequests, requestID)
+	c.pendingMu.Unlock()
+}
+
 // ProcessKMSMessages processes KMS messages received via Mercury WebSocket events.
-// These messages are JWE-encrypted with the ECDH shared secret and may contain
-// key updates or rotations from the KMS service.
+// These messages are JWE-encrypted and may contain:
+// - ECDH exchange responses (encrypted with client's ECDH public key)
+// - Key retrieval responses (encrypted with the ECDH shared secret)
+// - Key rotation notifications
+//
+// Messages matching a pending request (via requestId) are delivered to the
+// waiting goroutine. Others are processed for key caching.
 func (c *Client) ProcessKMSMessages(jweStrings []string) {
+	// Read the current ECDH context (shared secret) for decryption
 	c.ecdhMu.Lock()
 	ecdhCtx := c.ecdhCtx
 	c.ecdhMu.Unlock()
 
-	if ecdhCtx == nil {
-		return // No ECDH context established yet, can't decrypt
+	// Collect pending ECDH private keys for ECDH exchange response decryption
+	c.pendingMu.Lock()
+	pendingECDHKeys := make(map[string]*ecdsa.PrivateKey)
+	for reqID, req := range c.pendingRequests {
+		if req.ecdsaKey != nil {
+			pendingECDHKeys[reqID] = req.ecdsaKey
+		}
 	}
+	c.pendingMu.Unlock()
 
 	for _, jweStr := range jweStrings {
-		plaintext, err := unwrapWithSharedSecret(jweStr, ecdhCtx.sharedSecret)
-		if err != nil {
+		if jweStr == "" {
 			continue
 		}
 
+		var plaintext []byte
+
+		// KMS responses from Mercury may be:
+		// - JWS-signed (3 parts, 2 dots): ECDH exchange responses with plaintext JSON payload
+		// - JWE-encrypted (5 parts, 4 dots): Key retrieval responses encrypted with shared secret
+		dotCount := strings.Count(jweStr, ".")
+		if dotCount == 2 {
+			// JWS: extract the payload (2nd part) which is the plaintext response
+			parts := strings.SplitN(jweStr, ".", 3)
+			if len(parts) == 3 {
+				payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+				if err == nil && len(payload) > 0 {
+					if payload[0] == '{' {
+						// Payload is plaintext JSON (ECDH exchange response)
+						plaintext = payload
+					} else {
+						// Payload might be a JWE - try decrypting it below
+						jweStr = string(payload)
+					}
+				}
+			}
+		}
+
+		// If not yet decoded (JWE compact format), try decryption
+		if plaintext == nil && strings.Count(jweStr, ".") == 4 {
+			// Try 1: Decrypt with ECDH shared secret (for key retrieval responses)
+			if ecdhCtx != nil && ecdhCtx.sharedSecret != nil {
+				decrypted, err := unwrapWithSharedSecret(jweStr, ecdhCtx.sharedSecret)
+				if err == nil {
+					plaintext = decrypted
+				}
+			}
+
+			// Try 2: Decrypt with pending ECDH private keys (for ECDH exchange responses)
+			if plaintext == nil {
+				for _, ecKey := range pendingECDHKeys {
+					jweObj, parseErr := jose.ParseEncrypted(jweStr,
+						[]jose.KeyAlgorithm{jose.ECDH_ES, jose.ECDH_ES_A256KW, jose.DIRECT, jose.RSA_OAEP},
+						[]jose.ContentEncryption{jose.A256GCM, jose.A128GCM})
+					if parseErr != nil {
+						continue
+					}
+					decrypted, err := jweObj.Decrypt(ecKey)
+					if err == nil {
+						plaintext = decrypted
+						break
+					}
+				}
+			}
+		}
+
+		// For strings that start with '{' directly (JSON without JWS/JWE wrapper)
+		if plaintext == nil && len(jweStr) > 0 && jweStr[0] == '{' {
+			plaintext = []byte(jweStr)
+		}
+
+		if plaintext == nil {
+			continue
+		}
+
+		// Parse the decrypted/extracted message
 		var msg KMSMessage
 		if err := json.Unmarshal(plaintext, &msg); err != nil {
 			continue
 		}
 
-		// Cache any keys from the message
+		// Check if this matches a pending request (deliver via channel)
+		if msg.RequestID != "" {
+			c.pendingMu.Lock()
+			if req, ok := c.pendingRequests[msg.RequestID]; ok {
+				select {
+				case req.responseCh <- plaintext:
+				default:
+				}
+				delete(c.pendingRequests, msg.RequestID)
+				c.pendingMu.Unlock()
+				continue
+			}
+			c.pendingMu.Unlock()
+		}
+
+		// Not a pending request match - cache any keys from the message
 		if msg.Key != nil {
 			c.CacheKey(msg.Key)
 		}
