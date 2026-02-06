@@ -8,7 +8,7 @@ A meeting transcript provides a complete, AI-powered text record of what was dis
 
 1. List meeting transcripts
 2. Download transcript content (VTT or TXT format)
-3. List transcript snippets
+3. List transcript snippets (with speaker and time filters)
 4. Get individual snippet details
 5. Update snippet text
 
@@ -57,9 +57,9 @@ transcriptsPage, err := client.Transcripts().List(&transcripts.ListOptions{
 if err != nil {
     log.Printf("Failed to list transcripts: %v", err)
 } else {
-    fmt.Printf("Found %d transcripts\n", len(transcriptsPage.Items))
     for i, t := range transcriptsPage.Items {
-        fmt.Printf("%d. %s (Status: %s)\n", i+1, t.MeetingTopic, t.Status)
+        fmt.Printf("%d. %s (Status: %s, Duration: %ds)\n",
+            i+1, t.MeetingTopic, t.Status, t.Duration)
     }
 }
 ```
@@ -92,7 +92,7 @@ if err != nil {
 
 ### Listing Transcript Snippets
 
-Get individual spoken segments from a transcript:
+Get individual spoken segments from a transcript, with optional filters:
 
 ```go
 snippetsPage, err := client.Transcripts().ListSnippets("transcript-id", &transcripts.SnippetListOptions{
@@ -102,9 +102,22 @@ if err != nil {
     log.Printf("Failed to list snippets: %v", err)
 } else {
     for _, s := range snippetsPage.Items {
-        fmt.Printf("[%s] %s: %s\n", s.StartTime, s.PersonName, s.Text)
+        fmt.Printf("[%s] %s: %s (confidence: %.2f)\n",
+            s.StartTime, s.PersonName, s.Text, s.Confidence)
     }
 }
+```
+
+#### Filtering Snippets by Speaker or Time
+
+```go
+snippetsPage, err := client.Transcripts().ListSnippets("transcript-id", &transcripts.SnippetListOptions{
+    PersonEmail: "speaker@example.com",       // Filter by speaker email
+    PeopleID:    "people-id",                 // Or filter by people ID
+    From:        "2026-01-15T10:00:00Z",      // Time range start
+    To:          "2026-01-15T10:30:00Z",      // Time range end
+    Max:         50,
+})
 ```
 
 ### Getting a Specific Snippet
@@ -117,6 +130,7 @@ if err != nil {
     fmt.Printf("Speaker: %s (%s)\n", snippet.PersonName, snippet.PersonEmail)
     fmt.Printf("Text: %s\n", snippet.Text)
     fmt.Printf("Duration: %.1f seconds\n", snippet.Duration)
+    fmt.Printf("Confidence: %.2f\n", snippet.Confidence)
 }
 ```
 
@@ -137,7 +151,7 @@ if err != nil {
 
 ## Data Structures
 
-### Transcript Structure
+### Transcript
 
 ```go
 type Transcript struct {
@@ -150,13 +164,17 @@ type Transcript struct {
     HostUserID         string // Host user's unique ID
     HostEmail          string // Meeting host email (admin API only)
     StartTime          string // Meeting start time (ISO 8601)
+    EndTime            string // Meeting end time (ISO 8601)
+    Duration           int    // Duration in seconds
     Status             string // Transcript status ("available")
     VttDownloadLink    string // URL to download VTT format
     TxtDownloadLink    string // URL to download TXT format
+    Created            string // When the transcript was created (ISO 8601)
+    Updated            string // When the transcript was last updated (ISO 8601)
 }
 ```
 
-### Snippet Structure
+### Snippet
 
 ```go
 type Snippet struct {
@@ -171,6 +189,7 @@ type Snippet struct {
     Duration          float64 // Duration in seconds
     OffsetMillisecond int     // Offset from meeting start in ms
     Language          string  // Detected language
+    Confidence        float64 // Speech recognition confidence score (0.0–1.0)
 }
 ```
 
@@ -184,6 +203,18 @@ type ListOptions struct {
     From      string // Start date/time filter (ISO 8601)
     To        string // End date/time filter (ISO 8601)
     Max       int    // Maximum number of results
+}
+```
+
+### SnippetListOptions
+
+```go
+type SnippetListOptions struct {
+    Max         int    // Maximum number of results
+    PersonEmail string // Filter by speaker email
+    PeopleID    string // Filter by speaker people ID
+    From        string // Time range start (ISO 8601)
+    To          string // Time range end (ISO 8601)
 }
 ```
 
