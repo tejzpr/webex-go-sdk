@@ -213,24 +213,34 @@ func TestList(t *testing.T) {
 		createdAt := time.Now()
 		meetings := []Meeting{
 			{
-				ID:            "meeting-1",
-				Title:         "Meeting 1",
-				Start:         "2026-02-01T10:00:00Z",
-				End:           "2026-02-01T11:00:00Z",
-				MeetingType:   "meetingSeries",
-				State:         "active",
-				MeetingNumber: "1111111111",
-				Created:       &createdAt,
+				ID:               "meeting-1",
+				MeetingSeriesID:  "series-1",
+				Title:            "Meeting 1",
+				Start:            "2026-02-01T10:00:00Z",
+				End:              "2026-02-01T11:00:00Z",
+				MeetingType:      "meetingSeries",
+				State:            "active",
+				ScheduledType:    "meeting",
+				MeetingNumber:    "1111111111",
+				SiteURL:          "example.webex.com",
+				HasRecording:     false,
+				HasTranscription: false,
+				Created:          &createdAt,
 			},
 			{
-				ID:            "meeting-2",
-				Title:         "Meeting 2",
-				Start:         "2026-02-02T14:00:00Z",
-				End:           "2026-02-02T15:00:00Z",
-				MeetingType:   "meetingSeries",
-				State:         "active",
-				MeetingNumber: "2222222222",
-				Created:       &createdAt,
+				ID:               "meeting-2",
+				MeetingSeriesID:  "series-2",
+				Title:            "Meeting 2",
+				Start:            "2026-02-02T14:00:00Z",
+				End:              "2026-02-02T15:00:00Z",
+				MeetingType:      "meetingSeries",
+				State:            "active",
+				ScheduledType:    "meeting",
+				MeetingNumber:    "2222222222",
+				SiteURL:          "example.webex.com",
+				HasRecording:     true,
+				HasTranscription: true,
+				Created:          &createdAt,
 			},
 		}
 
@@ -263,9 +273,39 @@ func TestList(t *testing.T) {
 	if page.Items[0].Title != "Meeting 1" {
 		t.Errorf("Expected title 'Meeting 1', got '%s'", page.Items[0].Title)
 	}
+	if page.Items[0].MeetingSeriesID != "series-1" {
+		t.Errorf("Expected meetingSeriesId 'series-1', got '%s'", page.Items[0].MeetingSeriesID)
+	}
+	if page.Items[0].ScheduledType != "meeting" {
+		t.Errorf("Expected scheduledType 'meeting', got '%s'", page.Items[0].ScheduledType)
+	}
 	if page.Items[1].ID != "meeting-2" {
 		t.Errorf("Expected ID 'meeting-2', got '%s'", page.Items[1].ID)
 	}
+	if !page.Items[1].HasRecording {
+		t.Error("Expected meeting-2 hasRecording to be true")
+	}
+	if !page.Items[1].HasTranscription {
+		t.Error("Expected meeting-2 hasTranscription to be true")
+	}
+}
+
+func TestListStateRequiresMeetingType(t *testing.T) {
+	meetingsPlugin, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Request should not have been sent")
+	})
+	defer server.Close()
+
+	// state without meetingType should return an error
+	_, err := meetingsPlugin.List(&ListOptions{
+		State: "ended",
+	})
+	if err == nil {
+		t.Error("Expected error when state is set without meetingType")
+	}
+
+	// state with meetingType should not error (at the validation level)
+	// We don't check the API call here since newTestClient doesn't serve proper responses for this
 }
 
 func TestUpdate(t *testing.T) {

@@ -18,32 +18,46 @@ import (
 
 // Meeting represents a Webex meeting
 type Meeting struct {
-	ID                          string     `json:"id,omitempty"`
-	Title                       string     `json:"title,omitempty"`
-	Agenda                      string     `json:"agenda,omitempty"`
-	Password                    string     `json:"password,omitempty"`
-	Start                       string     `json:"start,omitempty"`
-	End                         string     `json:"end,omitempty"`
-	Timezone                    string     `json:"timezone,omitempty"`
-	Recurrence                  string     `json:"recurrence,omitempty"`
-	EnabledAutoRecordMeeting    bool       `json:"enabledAutoRecordMeeting,omitempty"`
-	AllowAnyUserToBeCoHost      bool       `json:"allowAnyUserToBeCoHost,omitempty"`
-	EnabledJoinBeforeHost       bool       `json:"enabledJoinBeforeHost,omitempty"`
-	EnableConnectAudioBeforeHost bool      `json:"enableConnectAudioBeforeHost,omitempty"`
-	JoinBeforeHostMinutes       int        `json:"joinBeforeHostMinutes,omitempty"`
-	ExcludePassword             bool       `json:"excludePassword,omitempty"`
-	PublicMeeting               bool       `json:"publicMeeting,omitempty"`
-	MeetingType                 string     `json:"meetingType,omitempty"`
-	State                       string     `json:"state,omitempty"`
-	HostUserID                  string     `json:"hostUserId,omitempty"`
-	HostDisplayName             string     `json:"hostDisplayName,omitempty"`
-	HostEmail                   string     `json:"hostEmail,omitempty"`
-	SipAddress                  string     `json:"sipAddress,omitempty"`
-	WebLink                     string     `json:"webLink,omitempty"`
-	MeetingNumber               string     `json:"meetingNumber,omitempty"`
-	PhoneAndVideoSystemPassword string     `json:"phoneAndVideoSystemPassword,omitempty"`
-	SiteURL                     string     `json:"siteUrl,omitempty"`
-	Created                     *time.Time `json:"created,omitempty"`
+	ID                           string     `json:"id,omitempty"`
+	MeetingSeriesID              string     `json:"meetingSeriesId,omitempty"`
+	ScheduledMeetingID           string     `json:"scheduledMeetingId,omitempty"`
+	Title                        string     `json:"title,omitempty"`
+	Agenda                       string     `json:"agenda,omitempty"`
+	Password                     string     `json:"password,omitempty"`
+	Start                        string     `json:"start,omitempty"`
+	End                          string     `json:"end,omitempty"`
+	Timezone                     string     `json:"timezone,omitempty"`
+	Recurrence                   string     `json:"recurrence,omitempty"`
+	EnabledAutoRecordMeeting     bool       `json:"enabledAutoRecordMeeting,omitempty"`
+	AllowAnyUserToBeCoHost       bool       `json:"allowAnyUserToBeCoHost,omitempty"`
+	EnabledJoinBeforeHost        bool       `json:"enabledJoinBeforeHost,omitempty"`
+	EnableConnectAudioBeforeHost bool       `json:"enableConnectAudioBeforeHost,omitempty"`
+	JoinBeforeHostMinutes        int        `json:"joinBeforeHostMinutes,omitempty"`
+	ExcludePassword              bool       `json:"excludePassword,omitempty"`
+	PublicMeeting                bool       `json:"publicMeeting,omitempty"`
+	MeetingType                  string     `json:"meetingType,omitempty"`
+	State                        string     `json:"state,omitempty"`
+	ScheduledType                string     `json:"scheduledType,omitempty"`
+	HostUserID                   string     `json:"hostUserId,omitempty"`
+	HostDisplayName              string     `json:"hostDisplayName,omitempty"`
+	HostEmail                    string     `json:"hostEmail,omitempty"`
+	SipAddress                   string     `json:"sipAddress,omitempty"`
+	WebLink                      string     `json:"webLink,omitempty"`
+	MeetingNumber                string     `json:"meetingNumber,omitempty"`
+	PhoneAndVideoSystemPassword  string     `json:"phoneAndVideoSystemPassword,omitempty"`
+	SiteURL                      string     `json:"siteUrl,omitempty"`
+	EnabledBreakoutSessions      bool       `json:"enabledBreakoutSessions,omitempty"`
+	IntegrationTags              []string   `json:"integrationTags,omitempty"`
+	HasChat                      bool       `json:"hasChat,omitempty"`
+	HasRecording                 bool       `json:"hasRecording,omitempty"`
+	HasTranscription             bool       `json:"hasTranscription,omitempty"`
+	HasSummary                   bool       `json:"hasSummary,omitempty"`
+	HasClosedCaption             bool       `json:"hasClosedCaption,omitempty"`
+	HasPolls                     bool       `json:"hasPolls,omitempty"`
+	HasQA                        bool       `json:"hasQA,omitempty"`
+	HasRegistration              bool       `json:"hasRegistration,omitempty"`
+	HasRegistrants               bool       `json:"hasRegistrants,omitempty"`
+	Created                      *time.Time `json:"created,omitempty"`
 }
 
 // Invitee represents a meeting invitee
@@ -99,11 +113,20 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 	}
 }
 
-// List returns a list of meetings
+// List returns a list of meetings.
+// Note: The Webex API requires meetingType to be set when state is used as a filter.
+// Without meetingType specified, the API returns meeting series (recurring definitions)
+// rather than actual meeting instances. Use meetingType="meeting" with state="ended"
+// and a from/to date range to list past meeting instances.
 func (c *Client) List(options *ListOptions) (*MeetingsPage, error) {
 	params := url.Values{}
 
 	if options != nil {
+		// Validate: the Webex API requires meetingType when state is specified
+		if options.State != "" && options.MeetingType == "" {
+			return nil, fmt.Errorf("meetingType is required when state filter is used (Webex API requirement)")
+		}
+
 		if options.MeetingNumber != "" {
 			params.Set("meetingNumber", options.MeetingNumber)
 		}
