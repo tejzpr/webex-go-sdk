@@ -112,7 +112,7 @@ func (m *KMSMessage) IsSuccess() bool {
 
 // pendingKMSRequest represents an async KMS request awaiting a Mercury response.
 type pendingKMSRequest struct {
-	responseCh chan []byte        // Receives the decrypted KMS response payload
+	responseCh chan []byte       // Receives the decrypted KMS response payload
 	ecdsaKey   *ecdsa.PrivateKey // For ECDH exchange responses (nil for shared-secret responses)
 }
 
@@ -135,7 +135,7 @@ type Client struct {
 	keyCache map[string]*Key
 
 	// In-flight key retrieval deduplication (singleflight pattern)
-	inflightMu  sync.Mutex
+	inflightMu   sync.Mutex
 	inflightKeys map[string]*inflightKeyRequest
 
 	// ECDH context for KMS communication
