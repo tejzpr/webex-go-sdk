@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"time"
@@ -138,6 +139,68 @@ func (c *Client) Request(method, path string, params url.Values, body interface{
 
 	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
+
+	// Add default headers
+	for k, v := range c.Config.DefaultHeaders {
+		req.Header.Set(k, v)
+	}
+
+	return c.HttpClient.Do(req)
+}
+
+// MultipartField represents a text field in a multipart request.
+type MultipartField struct {
+	Name  string
+	Value string
+}
+
+// MultipartFile represents a file to upload in a multipart request.
+type MultipartFile struct {
+	FieldName string // Form field name (e.g., "files")
+	FileName  string // Original filename (e.g., "report.pdf")
+	Content   []byte // Raw file bytes
+}
+
+// RequestMultipart performs a multipart/form-data POST request to the Webex API.
+// This is required for local file uploads (e.g., sending messages with attachments).
+func (c *Client) RequestMultipart(path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
+	u, err := url.Parse(c.BaseURL.String() + "/" + path)
+	if err != nil {
+		return nil, err
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	// Write text fields
+	for _, f := range fields {
+		if err := writer.WriteField(f.Name, f.Value); err != nil {
+			return nil, fmt.Errorf("error writing field %s: %w", f.Name, err)
+		}
+	}
+
+	// Write file parts
+	for _, f := range files {
+		part, err := writer.CreateFormFile(f.FieldName, f.FileName)
+		if err != nil {
+			return nil, fmt.Errorf("error creating form file %s: %w", f.FileName, err)
+		}
+		if _, err := part.Write(f.Content); err != nil {
+			return nil, fmt.Errorf("error writing file %s: %w", f.FileName, err)
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("error closing multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, u.String(), &body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	// Add default headers
 	for k, v := range c.Config.DefaultHeaders {

@@ -7,10 +7,12 @@
 package messages
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -239,6 +241,213 @@ func (c *Client) Delete(messageID string) error {
 	}
 
 	return nil
+}
+
+// FileUpload represents a file to attach to a message.
+// Provide either FilePath (local file) OR Base64Data + FileName.
+type FileUpload struct {
+	// FileName is the name of the file (e.g., "report.pdf").
+	// Required when using Base64Data.
+	FileName string
+
+	// Base64Data is the base64-encoded file content.
+	// When set, the data is decoded and uploaded as a binary file.
+	Base64Data string
+
+	// FileBytes is the raw file content.
+	// Use this when you already have the file in memory as bytes.
+	FileBytes []byte
+}
+
+// AdaptiveCard represents an Adaptive Card attachment.
+// See https://developer.webex.com/docs/buttons-and-cards for the card schema.
+type AdaptiveCard struct {
+	ContentType string      `json:"contentType"`
+	Content     interface{} `json:"content"`
+}
+
+// NewAdaptiveCard creates an AdaptiveCard attachment from a card body.
+// The cardBody should be a map or struct matching the Adaptive Card schema
+// (with "type": "AdaptiveCard", "version": "1.3", "body": [...], etc.).
+func NewAdaptiveCard(cardBody interface{}) AdaptiveCard {
+	return AdaptiveCard{
+		ContentType: "application/vnd.microsoft.card.adaptive",
+		Content:     cardBody,
+	}
+}
+
+// CreateWithAttachment sends a message with file attachments using multipart/form-data.
+// This supports uploading local files directly to Webex (up to 100MB per file).
+func (c *Client) CreateWithAttachment(message *Message, file *FileUpload) (*Message, error) {
+	if message.RoomID == "" && message.ToPersonID == "" && message.ToPersonEmail == "" {
+		return nil, fmt.Errorf("message must contain either roomId, toPersonId, or toPersonEmail")
+	}
+	if file == nil {
+		return nil, fmt.Errorf("file is required")
+	}
+
+	// Resolve file bytes
+	fileBytes, err := resolveFileBytes(file)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving file data: %w", err)
+	}
+
+	fileName := file.FileName
+	if fileName == "" {
+		fileName = "attachment"
+	}
+
+	// Build multipart fields from the message
+	var fields []webexsdk.MultipartField
+	if message.RoomID != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "roomId", Value: message.RoomID})
+	}
+	if message.ToPersonID != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "toPersonId", Value: message.ToPersonID})
+	}
+	if message.ToPersonEmail != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "toPersonEmail", Value: message.ToPersonEmail})
+	}
+	if message.Text != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "text", Value: message.Text})
+	}
+	if message.Markdown != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "markdown", Value: message.Markdown})
+	}
+	if message.ParentID != "" {
+		fields = append(fields, webexsdk.MultipartField{Name: "parentId", Value: message.ParentID})
+	}
+
+	files := []webexsdk.MultipartFile{
+		{
+			FieldName: "files",
+			FileName:  fileName,
+			Content:   fileBytes,
+		},
+	}
+
+	resp, err := c.webexClient.RequestMultipart("messages", fields, files)
+	if err != nil {
+		return nil, err
+	}
+
+	var result Message
+	if err := webexsdk.ParseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+// CreateWithBase64File sends a message with a base64-encoded file attachment.
+// This is a convenience wrapper around CreateWithAttachment for base64 data.
+func (c *Client) CreateWithBase64File(message *Message, fileName string, base64Data string) (*Message, error) {
+	return c.CreateWithAttachment(message, &FileUpload{
+		FileName:   fileName,
+		Base64Data: base64Data,
+	})
+}
+
+// CreateWithAdaptiveCard sends a message with an Adaptive Card attachment.
+// The fallbackText is displayed on clients that don't support adaptive cards.
+// The card parameter should be created via NewAdaptiveCard().
+func (c *Client) CreateWithAdaptiveCard(message *Message, card AdaptiveCard, fallbackText string) (*Message, error) {
+	if message.RoomID == "" && message.ToPersonID == "" && message.ToPersonEmail == "" {
+		return nil, fmt.Errorf("message must contain either roomId, toPersonId, or toPersonEmail")
+	}
+
+	// Set the fallback text if the message text is empty
+	if message.Text == "" && fallbackText != "" {
+		message.Text = fallbackText
+	}
+
+	// Webex requires at least text or markdown as fallback for adaptive cards
+	if message.Text == "" && message.Markdown == "" {
+		message.Text = "Adaptive Card"
+	}
+
+	// Set attachments on the message
+	message.Attachments = []Attachment{
+		{
+			ContentType: card.ContentType,
+			Content:     card.Content,
+		},
+	}
+
+	return c.Create(message)
+}
+
+// resolveFileBytes converts a FileUpload into raw bytes.
+func resolveFileBytes(file *FileUpload) ([]byte, error) {
+	// Already have raw bytes
+	if len(file.FileBytes) > 0 {
+		return file.FileBytes, nil
+	}
+
+	// Decode base64 data
+	if file.Base64Data != "" {
+		data, err := base64.StdEncoding.DecodeString(file.Base64Data)
+		if err != nil {
+			// Try URL-safe base64
+			data, err = base64.URLEncoding.DecodeString(file.Base64Data)
+			if err != nil {
+				// Try without padding
+				data, err = base64.RawStdEncoding.DecodeString(file.Base64Data)
+				if err != nil {
+					return nil, fmt.Errorf("invalid base64 data: %w", err)
+				}
+			}
+		}
+		return data, nil
+	}
+
+	return nil, fmt.Errorf("no file data provided: set FileBytes or Base64Data")
+}
+
+// inferContentType returns a MIME type guess based on file extension.
+// Falls back to "application/octet-stream" for unknown types.
+func inferContentType(filename string) string {
+	ext := filepath.Ext(filename)
+	switch ext {
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".bmp":
+		return "image/bmp"
+	case ".doc":
+		return "application/msword"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xls":
+		return "application/vnd.ms-excel"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".ppt":
+		return "application/vnd.ms-powerpoint"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".txt":
+		return "text/plain"
+	case ".csv":
+		return "text/csv"
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".zip":
+		return "application/zip"
+	case ".mp4":
+		return "video/mp4"
+	case ".mp3":
+		return "audio/mpeg"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 // Listen starts a real-time stream of message events

@@ -406,6 +406,100 @@ func TestPageNavigation(t *testing.T) {
 	}
 }
 
+func TestRequestMultipart(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check method
+		if r.Method != http.MethodPost {
+			t.Errorf("Expected method POST, got %s", r.Method)
+		}
+
+		// Check auth header
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("Expected Bearer test-token, got %q", r.Header.Get("Authorization"))
+		}
+
+		// Check content type is multipart
+		ct := r.Header.Get("Content-Type")
+		if ct == "" || len(ct) < 19 {
+			t.Fatalf("Expected multipart content type, got %q", ct)
+		}
+		if ct[:19] != "multipart/form-data" {
+			t.Fatalf("Expected multipart/form-data, got %q", ct)
+		}
+
+		// Parse multipart form
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			t.Fatalf("Failed to parse multipart: %v", err)
+		}
+
+		// Check text fields
+		if r.FormValue("roomId") != "room-abc" {
+			t.Errorf("Expected roomId 'room-abc', got '%s'", r.FormValue("roomId"))
+		}
+		if r.FormValue("text") != "hello" {
+			t.Errorf("Expected text 'hello', got '%s'", r.FormValue("text"))
+		}
+
+		// Check file
+		file, header, err := r.FormFile("files")
+		if err != nil {
+			t.Fatalf("Failed to get form file: %v", err)
+		}
+		defer file.Close()
+
+		if header.Filename != "test.txt" {
+			t.Errorf("Expected filename 'test.txt', got '%s'", header.Filename)
+		}
+
+		content, _ := io.ReadAll(file)
+		if string(content) != "file content here" {
+			t.Errorf("Expected 'file content here', got '%s'", content)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `{"id": "msg-123"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		Timeout:        5 * time.Second,
+		HttpClient:     server.Client(),
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	fields := []MultipartField{
+		{Name: "roomId", Value: "room-abc"},
+		{Name: "text", Value: "hello"},
+	}
+	files := []MultipartFile{
+		{FieldName: "files", FileName: "test.txt", Content: []byte("file content here")},
+	}
+
+	resp, err := client.RequestMultipart("messages", fields, files)
+	if err != nil {
+		t.Fatalf("RequestMultipart failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := ParseResponse(resp, &result); err != nil {
+		t.Fatalf("Failed to parse response: %v", err)
+	}
+	if result.ID != "msg-123" {
+		t.Errorf("Expected ID 'msg-123', got '%s'", result.ID)
+	}
+}
+
 // Mock ReadCloser for testing ParseResponse
 type mockReadCloser struct {
 	data  string
