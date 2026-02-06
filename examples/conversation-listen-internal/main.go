@@ -36,6 +36,18 @@ func main() {
 	// Create device client for WebSocket URL
 	deviceClient := device.New(client.Core(), nil)
 
+	// Register device to get WebSocket URL and device info
+	fmt.Println("Registering device...")
+	if err := deviceClient.Register(); err != nil {
+		fmt.Printf("Error registering device: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Device registered!")
+
+	// Get device info for encryption client
+	deviceInfo := deviceClient.GetDevice()
+	deviceURL, _ := deviceClient.GetDeviceURL()
+
 	// Create Mercury client for WebSocket connection
 	mercuryClient := mercury.New(client.Core(), nil)
 	mercuryClient.SetDeviceProvider(deviceClient)
@@ -44,78 +56,49 @@ func main() {
 	conversationClient := conversation.New(client.Core(), nil)
 	conversationClient.SetMercuryClient(mercuryClient)
 
+	// Pass device info to the encryption client for KMS authentication
+	conversationClient.SetEncryptionDeviceInfo(deviceURL, deviceInfo.UserID)
+
 	// Register handlers for different activity types
 	conversationClient.On("post", func(activity *conversation.Activity) {
-		fmt.Printf("Received POST message from %s: \n", activity.Actor.DisplayName)
+		fmt.Printf("\nReceived POST message from %s:\n", activity.Actor.DisplayName)
 
 		// Display encryption information
 		if activity.EncryptionKeyURL != "" {
-			fmt.Printf("Message is encrypted with key: %s\n", activity.EncryptionKeyURL)
-		} else {
-			fmt.Printf("Message is not encrypted\n")
-		}
-
-		// Get raw content before decryption
-		var rawContent string
-		if activity.DecryptedObject != nil {
-			rawContent = activity.DecryptedObject.DisplayName
-		} else if activity.Object != nil {
-			if c, ok := activity.Object["displayName"].(string); ok {
-				rawContent = c
-			}
-		}
-
-		if rawContent != "" {
-			fmt.Printf("Raw encrypted content: %s...\n", truncateString(rawContent, 30))
-		}
-
-		// Get decrypted message content
-		// TODO: Implement message decryption
-		// content, err := conversationClient.GetMessageContent(activity)
-		// if err != nil {
-		// 	fmt.Printf("Error getting message content: %v\n", err)
-		// 	return
-		// }
-
-		// Show the (possibly) decrypted content
-		// fmt.Printf("Decrypted content: %s\n", content)
-		fmt.Printf("Room ID: %s\n", activity.Target.ID)
-		fmt.Println("----------------------------")
-	})
-
-	conversationClient.On("share", func(activity *conversation.Activity) {
-		fmt.Printf("Received SHARE message from %s: \n", activity.Actor.DisplayName)
-
-		// Display encryption information
-		if activity.EncryptionKeyURL != "" {
-			fmt.Printf("Message is encrypted with key: %s\n", activity.EncryptionKeyURL)
-		} else {
-			fmt.Printf("Message is not encrypted\n")
-		}
-
-		// Get raw content before decryption
-		var rawContent string
-		if activity.DecryptedObject != nil {
-			rawContent = activity.DecryptedObject.DisplayName
-		} else if activity.Object != nil {
-			if c, ok := activity.Object["displayName"].(string); ok {
-				rawContent = c
-			}
-		}
-
-		if rawContent != "" {
-			fmt.Printf("Raw encrypted content: %s...\n", truncateString(rawContent, 30))
+			fmt.Printf("  Encrypted with key: %s\n", activity.EncryptionKeyURL)
 		}
 
 		// Get decrypted message content
 		content, err := conversationClient.GetMessageContent(activity)
 		if err != nil {
-			fmt.Printf("Error getting message content: %v\n", err)
-			return
+			fmt.Printf("  Error decrypting: %v\n", err)
+			// Show raw content as fallback
+			if activity.DecryptedObject != nil && activity.DecryptedObject.DisplayName != "" {
+				fmt.Printf("  Raw (encrypted): %s\n", truncateString(activity.DecryptedObject.DisplayName, 80))
+			}
+		} else {
+			fmt.Printf("  Content: %s\n", content)
 		}
 
-		fmt.Printf("Decrypted content: %s\n", content)
-		fmt.Printf("Room ID: %s\n", activity.Target.ID)
+		fmt.Printf("  Room ID: %s\n", activity.Target.ID)
+		fmt.Println("----------------------------")
+	})
+
+	conversationClient.On("share", func(activity *conversation.Activity) {
+		fmt.Printf("\nReceived SHARE message from %s:\n", activity.Actor.DisplayName)
+
+		if activity.EncryptionKeyURL != "" {
+			fmt.Printf("  Encrypted with key: %s\n", activity.EncryptionKeyURL)
+		}
+
+		content, err := conversationClient.GetMessageContent(activity)
+		if err != nil {
+			fmt.Printf("  Error decrypting: %v\n", err)
+		} else {
+			fmt.Printf("  Content: %s\n", content)
+		}
+
+		fmt.Printf("  Room ID: %s\n", activity.Target.ID)
 		fmt.Println("----------------------------")
 	})
 
@@ -134,7 +117,7 @@ func main() {
 	}
 	fmt.Println("Connected to WebSocket!")
 	fmt.Println("Listening for conversation events. Press Ctrl+C to exit.")
-	fmt.Println("Messages in encrypted spaces will include encryption key information.")
+	fmt.Println("Messages will be automatically decrypted using the KMS service.")
 
 	// Wait for Ctrl+C to exit
 	sigCh := make(chan os.Signal, 1)

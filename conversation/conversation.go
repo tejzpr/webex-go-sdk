@@ -229,8 +229,8 @@ func (c *Client) processMessageContent(activity *Activity) error {
 	return nil
 }
 
-// GetMessageContent attempts to extract the message content from an activity
-// TODO: Implement message decryption
+// GetMessageContent attempts to extract the message content from an activity.
+// If the message is encrypted, it will be decrypted using the KMS encryption key.
 func (c *Client) GetMessageContent(activity *Activity) (string, error) {
 	if activity == nil {
 		return "", fmt.Errorf("activity is nil")
@@ -322,6 +322,9 @@ func (c *Client) SetMercuryClient(mercuryClient *mercury.Client) {
 
 	// Register handlers for conversation activity events
 	mercuryClient.On("conversation.activity", func(event *mercury.Event) {
+		// Process any KMS messages that arrive with the event
+		c.processEventKMSMessages(event)
+
 		activity, err := c.ProcessActivityEvent(event)
 		if err != nil {
 			fmt.Printf("Error processing activity event: %v\n", err)
@@ -330,6 +333,57 @@ func (c *Client) SetMercuryClient(mercuryClient *mercury.Client) {
 
 		c.dispatchActivity(activity)
 	})
+
+	// Register handler for encryption KMS message events
+	mercuryClient.On("encryption.kms_message", func(event *mercury.Event) {
+		c.processEventKMSMessages(event)
+	})
+}
+
+// SetEncryptionDeviceInfo passes device information to the encryption client
+// so it can authenticate with the KMS service. Call this after device registration.
+func (c *Client) SetEncryptionDeviceInfo(deviceURL, userID string) {
+	if c.encryptionClient != nil {
+		c.encryptionClient.SetDeviceInfo(deviceURL, userID)
+	}
+}
+
+// EncryptionClient returns the encryption client for direct access.
+func (c *Client) EncryptionClient() *encryption.Client {
+	return c.encryptionClient
+}
+
+// processEventKMSMessages extracts and processes KMS messages from a Mercury event.
+// KMS messages can arrive in the event data as "encryption.kmsMessages" and contain
+// key updates or rotations that need to be decrypted and cached.
+func (c *Client) processEventKMSMessages(event *mercury.Event) {
+	if event.Data == nil || c.encryptionClient == nil {
+		return
+	}
+
+	// Check for kmsMessages in the event data
+	kmsMessages, ok := event.Data["encryption.kmsMessages"].([]interface{})
+	if !ok {
+		// Also check nested under "encryption" key
+		if encData, ok := event.Data["encryption"].(map[string]interface{}); ok {
+			kmsMessages, _ = encData["kmsMessages"].([]interface{})
+		}
+	}
+
+	if len(kmsMessages) == 0 {
+		return
+	}
+
+	jweStrings := make([]string, 0, len(kmsMessages))
+	for _, msg := range kmsMessages {
+		if s, ok := msg.(string); ok {
+			jweStrings = append(jweStrings, s)
+		}
+	}
+
+	if len(jweStrings) > 0 {
+		c.encryptionClient.ProcessKMSMessages(jweStrings)
+	}
 }
 
 // dispatchActivity dispatches an activity to all registered handlers

@@ -16,8 +16,7 @@ A comprehensive, lightweight Go SDK for Cisco Webex API
 ## Implementation Status
 
 - ✅ All REST APIs are fully implemented and working
-- ⚠️ Websocket APIs are partially implemented
-  - 🚧 Decryption of messages from websocket is pending implementation (help needed)
+- ✅ WebSocket APIs with end-to-end encrypted message decryption
 
 ## Installation
 
@@ -75,10 +74,14 @@ func main() {
 - **Attachment Actions** - Handle interactive card submissions
 - **Events** - Subscribe to Webex events
 - **Room Tabs** - Manage tabs in Webex rooms
+- **Meetings** - Create, list, update, and delete Webex meetings
+- **Meeting Transcripts** - List, download, and manage meeting transcripts and snippets
 
-### Websocket APIs (Partially Implemented)
+### WebSocket APIs
 
-- **Messages over Websocket** - Real-time messaging (message decryption pending)
+- **Mercury** - Real-time WebSocket connection with automatic reconnection
+- **Conversation Events** - Listen for messages, shares, and acknowledgements
+- **End-to-End Encryption** - Full JWE decryption using KMS (ECDH key exchange + AES-256-GCM)
 
 ## Examples
 
@@ -109,7 +112,7 @@ For detailed documentation, examples, and API reference, see:
 
 ## Requirements
 
-- Go 1.20 or later
+- Go 1.21 or later
 
 ## Contributing
 

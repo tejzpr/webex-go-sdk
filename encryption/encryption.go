@@ -7,26 +7,22 @@
 package encryption
 
 import (
-	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 )
 
 const (
-	kmsURIPrefix     = "kms://"
-	kmsRequestMethod = "retrieve"
-	kmsRequestID     = "go-sdk-request"
-	defaultCluster   = "a"
-	defaultTimeout   = 10 * time.Second
+	kmsURIPrefix   = "kms://"
+	defaultCluster = "a"
+	defaultTimeout = 10 * time.Second
 )
 
 // Config holds the configuration for the Encryption plugin
@@ -50,7 +46,8 @@ func DefaultConfig() *Config {
 
 // JWK represents a JSON Web Key
 type JWK struct {
-	Kty string `json:"kty"`           // Key type
+	Kty string `json:"kty"`           // Key type (oct, EC, RSA)
+	K   string `json:"k,omitempty"`   // Key value (for symmetric/oct keys, base64url-encoded)
 	Crv string `json:"crv,omitempty"` // Curve (for EC keys)
 	X   string `json:"x,omitempty"`   // X coordinate (for EC keys)
 	Y   string `json:"y,omitempty"`   // Y coordinate (for EC keys)
@@ -59,6 +56,18 @@ type JWK struct {
 	E   string `json:"e,omitempty"`   // Exponent (for RSA keys)
 	Kid string `json:"kid,omitempty"` // Key ID
 	Alg string `json:"alg,omitempty"` // Algorithm
+}
+
+// SymmetricKey extracts the raw symmetric key bytes from an oct-type JWK.
+// Returns an error if the key type is not "oct" or the key value is empty.
+func (j *JWK) SymmetricKey() ([]byte, error) {
+	if j.Kty != "oct" {
+		return nil, fmt.Errorf("key type is %q, expected \"oct\" for symmetric key", j.Kty)
+	}
+	if j.K == "" {
+		return nil, fmt.Errorf("symmetric key value (k) is empty")
+	}
+	return base64.RawURLEncoding.DecodeString(j.K)
 }
 
 // Key represents a KMS key
@@ -73,12 +82,28 @@ type KMSMessage struct {
 	URI         string                 `json:"uri,omitempty"`         // URI of the key
 	ResourceURI string                 `json:"resourceUri,omitempty"` // URI of the resource
 	RequestID   string                 `json:"requestId,omitempty"`   // ID of the request
-	Status      string                 `json:"status,omitempty"`      // Status of the response
+	Status      interface{}            `json:"status,omitempty"`      // Status of the response (string or int)
 	Key         *Key                   `json:"key,omitempty"`         // Key in the response
 	Keys        []*Key                 `json:"keys,omitempty"`        // Multiple keys in the response
 	UserIDs     []string               `json:"userIds,omitempty"`     // User IDs for key creation
 	KeyURIs     []string               `json:"keyUris,omitempty"`     // Key URIs for batch operations
 	Resource    map[string]interface{} `json:"resource,omitempty"`    // Resource data
+	JWK         *JWK                   `json:"jwk,omitempty"`         // JWK for ECDH key exchange
+}
+
+// IsSuccess checks if the KMS response indicates success.
+// Handles both string ("success") and numeric (200) status values.
+func (m *KMSMessage) IsSuccess() bool {
+	switch s := m.Status.(type) {
+	case string:
+		return s == "success" || s == "200"
+	case float64:
+		return int(s) == 200
+	case int:
+		return s == 200
+	default:
+		return false
+	}
 }
 
 // Client is the Encryption API client
@@ -86,8 +111,16 @@ type Client struct {
 	webexClient *webexsdk.Client
 	config      *Config
 	httpClient  *http.Client
-	mu          sync.RWMutex // Use RWMutex for better concurrency
-	keyCache    map[string]*Key
+
+	// Key cache
+	mu       sync.RWMutex
+	keyCache map[string]*Key
+
+	// ECDH context for KMS communication
+	ecdhMu    sync.Mutex
+	ecdhCtx   *ECDHContext
+	deviceURL string // Device URL used as KMS client ID
+	userID    string // User ID for KMS requests
 }
 
 // New creates a new Encryption plugin
@@ -96,7 +129,6 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 		config = DefaultConfig()
 	}
 
-	// Create HTTP client with timeout
 	httpClient := &http.Client{
 		Timeout: config.HTTPTimeout,
 	}
@@ -107,6 +139,16 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 		httpClient:  httpClient,
 		keyCache:    make(map[string]*Key),
 	}
+}
+
+// SetDeviceInfo sets the device URL and user ID for KMS communication.
+// The device URL is used as the client ID in KMS requests.
+// The user ID is used to look up the KMS cluster info.
+func (c *Client) SetDeviceInfo(deviceURL, userID string) {
+	c.ecdhMu.Lock()
+	defer c.ecdhMu.Unlock()
+	c.deviceURL = deviceURL
+	c.userID = userID
 }
 
 // GetKey retrieves a key from KMS
@@ -122,13 +164,12 @@ func (c *Client) GetKey(keyURI string) (*Key, error) {
 	}
 
 	// Parse and validate the KMS URI
-	domain, path, err := parseKMSURI(keyURI)
-	if err != nil {
+	if _, _, err := parseKMSURI(keyURI); err != nil {
 		return nil, err
 	}
 
-	// Create and execute KMS request
-	key, err := c.retrieveKeyFromKMS(domain, path, keyURI)
+	// Retrieve key using KMS protocol
+	key, err := c.retrieveKeyFromKMS(keyURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve key from KMS: %w", err)
 	}
@@ -141,6 +182,50 @@ func (c *Client) GetKey(keyURI string) (*Key, error) {
 	}
 
 	return key, nil
+}
+
+// CacheKey manually caches a key. This is used when keys arrive via
+// Mercury WebSocket events (e.g., encryption.kmsMessages).
+func (c *Client) CacheKey(key *Key) {
+	if key == nil || key.URI == "" {
+		return
+	}
+	c.mu.Lock()
+	c.keyCache[key.URI] = key
+	c.mu.Unlock()
+}
+
+// ProcessKMSMessages processes KMS messages received via Mercury WebSocket events.
+// These messages are JWE-encrypted with the ECDH shared secret and may contain
+// key updates or rotations from the KMS service.
+func (c *Client) ProcessKMSMessages(jweStrings []string) {
+	c.ecdhMu.Lock()
+	ecdhCtx := c.ecdhCtx
+	c.ecdhMu.Unlock()
+
+	if ecdhCtx == nil {
+		return // No ECDH context established yet, can't decrypt
+	}
+
+	for _, jweStr := range jweStrings {
+		plaintext, err := unwrapWithSharedSecret(jweStr, ecdhCtx.sharedSecret)
+		if err != nil {
+			continue
+		}
+
+		var msg KMSMessage
+		if err := json.Unmarshal(plaintext, &msg); err != nil {
+			continue
+		}
+
+		// Cache any keys from the message
+		if msg.Key != nil {
+			c.CacheKey(msg.Key)
+		}
+		for _, key := range msg.Keys {
+			c.CacheKey(key)
+		}
+	}
 }
 
 // parseKMSURI parses a KMS URI and returns the domain and path
@@ -160,85 +245,9 @@ func parseKMSURI(keyURI string) (domain string, path string, err error) {
 	return parts[0], parts[1], nil
 }
 
-// retrieveKeyFromKMS sends a request to the KMS service to retrieve a key
-func (c *Client) retrieveKeyFromKMS(domain, path, keyURI string) (*Key, error) {
-	// Create KMS request
-	kmsMessage := &KMSMessage{
-		Method:    kmsRequestMethod,
-		URI:       keyURI,
-		RequestID: kmsRequestID,
-	}
-
-	// Convert to JSON
-	kmsRequestData, err := json.Marshal(kmsMessage)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling KMS request: %w", err)
-	}
-
-	// Determine KMS endpoint
-	cluster := getClusterFromDomain(domain, c.config.DefaultCluster)
-	kmsEndpoint := fmt.Sprintf("https://encryption-%s.wbx2.com/encryption/api/v1/%s", cluster, path)
-
-	// Create request with context for timeout
-	ctx, cancel := context.WithTimeout(context.Background(), c.config.HTTPTimeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, kmsEndpoint, bytes.NewBuffer(kmsRequestData))
-	if err != nil {
-		return nil, fmt.Errorf("error creating KMS request: %w", err)
-	}
-
-	// Add headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
-
-	// Send the request
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error making KMS request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Read the response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading KMS response: %w", err)
-	}
-
-	// Check for HTTP error
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("KMS request failed with status %d: %s", resp.StatusCode, respBody)
-	}
-
-	// Parse response
-	var kmsResponse KMSMessage
-	if err := json.Unmarshal(respBody, &kmsResponse); err != nil {
-		return nil, fmt.Errorf("error parsing KMS response: %w", err)
-	}
-
-	// Check for KMS error
-	if kmsResponse.Status != "success" {
-		return nil, fmt.Errorf("KMS request failed with status: %s", kmsResponse.Status)
-	}
-
-	// Validate response
-	if kmsResponse.Key == nil {
-		return nil, fmt.Errorf("no key found in KMS response")
-	}
-
-	return kmsResponse.Key, nil
-}
-
-// getClusterFromDomain determines the appropriate cluster from the domain
-func getClusterFromDomain(domain, defaultCluster string) string {
-	// Default to "a" for cisco.com domain
-	if domain == "cisco.com" {
-		return "a"
-	}
-	return defaultCluster
-}
-
-// DecryptText decrypts JWE encrypted text using a KMS key
+// DecryptText decrypts JWE-encrypted text using a KMS key.
+// The ciphertext must be in JWE compact serialization format (5 dot-separated parts).
+// Supports alg:dir + enc:A256GCM as used by Webex end-to-end encryption.
 func (c *Client) DecryptText(keyURI string, ciphertext string) (string, error) {
 	// Parameter validation
 	if keyURI == "" {
@@ -254,31 +263,28 @@ func (c *Client) DecryptText(keyURI string, ciphertext string) (string, error) {
 		return "", fmt.Errorf("error getting key: %w", err)
 	}
 
-	// Validate JWE format (should have 5 parts separated by periods)
-	parts := strings.Split(ciphertext, ".")
-	if len(parts) != 5 {
-		return "", fmt.Errorf("invalid JWE format: expected 5 parts, got %d", len(parts))
-	}
-
-	// Try to decode the header to confirm it's a valid JWE
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	// Extract raw symmetric key bytes from the JWK
+	rawKey, err := key.JWK.SymmetricKey()
 	if err != nil {
-		return "", fmt.Errorf("error decoding JWE header: %w", err)
+		return "", fmt.Errorf("error extracting symmetric key: %w", err)
 	}
 
-	var header map[string]interface{}
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return "", fmt.Errorf("error parsing JWE header: %w", err)
+	// Parse the JWE compact serialization, restricting to the algorithms
+	// used by Webex: direct key agreement with AES-256-GCM content encryption
+	jweObj, err := jose.ParseEncrypted(ciphertext,
+		[]jose.KeyAlgorithm{jose.DIRECT},
+		[]jose.ContentEncryption{jose.A256GCM})
+	if err != nil {
+		return "", fmt.Errorf("error parsing JWE: %w", err)
 	}
 
-	// Extract algorithm information
-	alg, _ := header["alg"].(string)
-	enc, _ := header["enc"].(string)
+	// Decrypt with the symmetric key
+	plaintext, err := jweObj.Decrypt(rawKey)
+	if err != nil {
+		return "", fmt.Errorf("error decrypting JWE: %w", err)
+	}
 
-	// For now, return a message that explains what we would do with proper decryption
-	// Note: This is a placeholder for actual decryption logic
-	return fmt.Sprintf("[ENCRYPTED CONTENT] - This would be decrypted with key %s, algorithm %s, encryption %s",
-		key.JWK.Kid, alg, enc), nil
+	return string(plaintext), nil
 }
 
 // DecryptMessageContent attempts to decrypt message content using encryption key URL
