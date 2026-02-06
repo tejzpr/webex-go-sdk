@@ -10,6 +10,7 @@ import (
 	"github.com/tejzpr/webex-go-sdk/v2/attachmentactions"
 	"github.com/tejzpr/webex-go-sdk/v2/device"
 	"github.com/tejzpr/webex-go-sdk/v2/events"
+	"github.com/tejzpr/webex-go-sdk/v2/meetings"
 	"github.com/tejzpr/webex-go-sdk/v2/memberships"
 	"github.com/tejzpr/webex-go-sdk/v2/mercury"
 	"github.com/tejzpr/webex-go-sdk/v2/messages"
@@ -18,6 +19,7 @@ import (
 	"github.com/tejzpr/webex-go-sdk/v2/roomtabs"
 	"github.com/tejzpr/webex-go-sdk/v2/teammemberships"
 	"github.com/tejzpr/webex-go-sdk/v2/teams"
+	"github.com/tejzpr/webex-go-sdk/v2/transcripts"
 	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 	"github.com/tejzpr/webex-go-sdk/v2/webhooks"
 )
@@ -38,6 +40,8 @@ type WebexClient struct {
 	teamsClient             *teams.Client
 	webhooksClient          *webhooks.Client
 	eventsClient            *events.Client
+	meetingsClient          *meetings.Client
+	transcriptsClient       *transcripts.Client
 
 	// Internal plugins
 	mercuryClient *mercury.Client
@@ -136,6 +140,22 @@ func (c *WebexClient) Events() *events.Client {
 		c.eventsClient = events.New(c.core, nil)
 	}
 	return c.eventsClient
+}
+
+// Meetings returns the Meetings plugin
+func (c *WebexClient) Meetings() *meetings.Client {
+	if c.meetingsClient == nil {
+		c.meetingsClient = meetings.New(c.core, nil)
+	}
+	return c.meetingsClient
+}
+
+// Transcripts returns the Transcripts plugin
+func (c *WebexClient) Transcripts() *transcripts.Client {
+	if c.transcriptsClient == nil {
+		c.transcriptsClient = transcripts.New(c.core, nil)
+	}
+	return c.transcriptsClient
 }
 
 // Internal returns a struct containing internal plugins
