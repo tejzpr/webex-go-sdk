@@ -492,9 +492,22 @@ func (c *Client) Listen(handler MessageHandler) error {
 	if c.mercury == nil {
 		c.mercury = mercury.New(c.webexClient, c.config.MercuryConfig)
 
-		// Create a Device client to use as the device provider
+		// Create a Device client and register it to get WebSocket URL and device info
 		deviceClient := device.New(c.webexClient, nil)
+		if err := deviceClient.Register(); err != nil {
+			c.mu.Lock()
+			c.listeningActive = false
+			c.mu.Unlock()
+			return fmt.Errorf("device registration failed: %w", err)
+		}
 		c.mercury.SetDeviceProvider(deviceClient)
+
+		// Wire encryption device info so messages are decrypted via KMS
+		deviceURL, err := deviceClient.GetDeviceURL()
+		if err == nil {
+			deviceInfo := deviceClient.GetDevice()
+			c.conversationClient.SetEncryptionDeviceInfo(deviceURL, deviceInfo.UserID)
+		}
 	}
 
 	// Create and initialize the Conversation plugin

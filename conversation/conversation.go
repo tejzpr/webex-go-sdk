@@ -346,6 +346,33 @@ func (c *Client) SetEncryptionDeviceInfo(deviceURL, userID string) {
 	}
 }
 
+// Connect starts the Mercury WebSocket connection.
+// This is a convenience method that delegates to the underlying Mercury client.
+// Handlers should be registered with On() before calling Connect().
+func (c *Client) Connect() error {
+	c.mu.RLock()
+	mc := c.mercuryClient
+	c.mu.RUnlock()
+
+	if mc == nil {
+		return fmt.Errorf("mercury client not set; call SetMercuryClient or use the top-level webex.Client.Conversation() convenience method")
+	}
+	return mc.Connect()
+}
+
+// Disconnect stops the Mercury WebSocket connection.
+// This is a convenience method that delegates to the underlying Mercury client.
+func (c *Client) Disconnect() error {
+	c.mu.RLock()
+	mc := c.mercuryClient
+	c.mu.RUnlock()
+
+	if mc == nil {
+		return fmt.Errorf("mercury client not set; nothing to disconnect")
+	}
+	return mc.Disconnect()
+}
+
 // EncryptionClient returns the encryption client for direct access.
 func (c *Client) EncryptionClient() *encryption.Client {
 	return c.encryptionClient

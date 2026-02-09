@@ -14,8 +14,6 @@ import (
 
 	"github.com/tejzpr/webex-go-sdk/v2"
 	"github.com/tejzpr/webex-go-sdk/v2/conversation"
-	"github.com/tejzpr/webex-go-sdk/v2/device"
-	"github.com/tejzpr/webex-go-sdk/v2/mercury"
 )
 
 func main() {
@@ -33,31 +31,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create device client for WebSocket URL
-	deviceClient := device.New(client.Core(), nil)
-
-	// Register device to get WebSocket URL and device info
-	fmt.Println("Registering device...")
-	if err := deviceClient.Register(); err != nil {
-		fmt.Printf("Error registering device: %v\n", err)
+	// Get a fully-wired conversation client (handles device registration,
+	// Mercury WebSocket setup, and encryption/KMS authentication automatically)
+	fmt.Println("Initializing conversation client...")
+	conversationClient, err := client.Conversation()
+	if err != nil {
+		fmt.Printf("Error initializing conversation client: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("Device registered!")
-
-	// Get device info for encryption client
-	deviceInfo := deviceClient.GetDevice()
-	deviceURL, _ := deviceClient.GetDeviceURL()
-
-	// Create Mercury client for WebSocket connection
-	mercuryClient := mercury.New(client.Core(), nil)
-	mercuryClient.SetDeviceProvider(deviceClient)
-
-	// Create conversation client
-	conversationClient := conversation.New(client.Core(), nil)
-	conversationClient.SetMercuryClient(mercuryClient)
-
-	// Pass device info to the encryption client for KMS authentication
-	conversationClient.SetEncryptionDeviceInfo(deviceURL, deviceInfo.UserID)
+	fmt.Println("Conversation client ready!")
 
 	// Register handlers for different activity types
 	conversationClient.On("post", func(activity *conversation.Activity) {
@@ -110,7 +92,7 @@ func main() {
 
 	// Connect to the Mercury service (WebSocket)
 	fmt.Println("Connecting to WebSocket...")
-	err = mercuryClient.Connect()
+	err = conversationClient.Connect()
 	if err != nil {
 		fmt.Printf("Error connecting to WebSocket: %v\n", err)
 		os.Exit(1)
@@ -126,7 +108,7 @@ func main() {
 
 	// Disconnect
 	fmt.Println("\nDisconnecting from WebSocket...")
-	mercuryClient.Disconnect()
+	conversationClient.Disconnect()
 	fmt.Println("Disconnected!")
 }
 

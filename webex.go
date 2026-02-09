@@ -7,7 +7,11 @@
 package webex
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/tejzpr/webex-go-sdk/v2/attachmentactions"
+	"github.com/tejzpr/webex-go-sdk/v2/conversation"
 	"github.com/tejzpr/webex-go-sdk/v2/device"
 	"github.com/tejzpr/webex-go-sdk/v2/events"
 	"github.com/tejzpr/webex-go-sdk/v2/meetings"
@@ -42,10 +46,14 @@ type WebexClient struct {
 	eventsClient            *events.Client
 	meetingsClient          *meetings.Client
 	transcriptsClient       *transcripts.Client
+	conversationClient      *conversation.Client
 
 	// Internal plugins
 	mercuryClient *mercury.Client
 	deviceClient  *device.Client
+
+	// Mutex for thread-safe lazy initialization of conversation client
+	convMu sync.Mutex
 }
 
 // NewClient creates a new Webex client with the given access token and optional configuration
@@ -156,6 +164,57 @@ func (c *WebexClient) Transcripts() *transcripts.Client {
 		c.transcriptsClient = transcripts.New(c.core, nil)
 	}
 	return c.transcriptsClient
+}
+
+// Conversation returns a fully-wired Conversation client for real-time
+// WebSocket message listening with automatic decryption.
+//
+// This is a convenience method that abstracts away the manual setup of
+// Device registration, Mercury WebSocket wiring, and encryption (KMS)
+// authentication. The client is lazily initialized on first call and
+// cached for subsequent calls.
+//
+// Simple usage:
+//
+//	conv, err := client.Conversation()
+//	conv.On("post", handler)
+//	conv.Connect()
+//	defer conv.Disconnect()
+//
+// For advanced control over Device, Mercury, or Encryption configuration,
+// use the lower-level APIs directly (device.New, mercury.New, conversation.New).
+func (c *WebexClient) Conversation() (*conversation.Client, error) {
+	c.convMu.Lock()
+	defer c.convMu.Unlock()
+
+	if c.conversationClient != nil {
+		return c.conversationClient, nil
+	}
+
+	// 1. Ensure device is registered (network call)
+	deviceClient := c.Device()
+	if err := deviceClient.Register(); err != nil {
+		return nil, fmt.Errorf("device registration failed: %w", err)
+	}
+
+	// 2. Get device info for encryption wiring
+	deviceURL, err := deviceClient.GetDeviceURL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get device URL: %w", err)
+	}
+	deviceInfo := deviceClient.GetDevice()
+
+	// 3. Create conversation client
+	convClient := conversation.New(c.core, nil)
+
+	// 4. Wire Mercury (WebSocket event routing)
+	convClient.SetMercuryClient(c.Mercury())
+
+	// 5. Wire encryption device info (ECDH/KMS authentication)
+	convClient.SetEncryptionDeviceInfo(deviceURL, deviceInfo.UserID)
+
+	c.conversationClient = convClient
+	return c.conversationClient, nil
 }
 
 // Internal returns a struct containing internal plugins
