@@ -229,43 +229,39 @@ func (c *Client) Unregister() error {
 	return nil
 }
 
-// GetWebSocketURL returns the WebSocket URL for Mercury connections
-func (c *Client) GetWebSocketURL() (string, error) {
+// ensureRegistered ensures the device is registered and returns the device info.
+func (c *Client) ensureRegistered() (*DeviceResponse, error) {
 	c.mu.Lock()
 	deviceInfo := c.deviceInfo
 	c.mu.Unlock()
 
-	// Ensure we have device info
 	if deviceInfo == nil {
 		if err := c.Register(); err != nil {
-			return "", fmt.Errorf("failed to register device: %w", err)
+			return nil, fmt.Errorf("failed to register device: %w", err)
 		}
 		c.mu.Lock()
 		deviceInfo = c.deviceInfo
 		c.mu.Unlock()
 	}
 
-	// Return the WebSocket URL
+	return deviceInfo, nil
+}
+
+// GetWebSocketURL returns the WebSocket URL for Mercury connections
+func (c *Client) GetWebSocketURL() (string, error) {
+	deviceInfo, err := c.ensureRegistered()
+	if err != nil {
+		return "", err
+	}
 	return deviceInfo.WebSocketURL, nil
 }
 
 // GetDeviceURL returns the device URL
 func (c *Client) GetDeviceURL() (string, error) {
-	c.mu.Lock()
-	deviceInfo := c.deviceInfo
-	c.mu.Unlock()
-
-	// Ensure we have device info
-	if deviceInfo == nil {
-		if err := c.Register(); err != nil {
-			return "", fmt.Errorf("failed to register device: %w", err)
-		}
-		c.mu.Lock()
-		deviceInfo = c.deviceInfo
-		c.mu.Unlock()
+	deviceInfo, err := c.ensureRegistered()
+	if err != nil {
+		return "", err
 	}
-
-	// Return the device URL
 	return deviceInfo.URL, nil
 }
 

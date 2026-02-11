@@ -346,16 +346,25 @@ func (c *Client) SetEncryptionDeviceInfo(deviceURL, userID string) {
 	}
 }
 
-// Connect starts the Mercury WebSocket connection.
-// This is a convenience method that delegates to the underlying Mercury client.
-// Handlers should be registered with On() before calling Connect().
-func (c *Client) Connect() error {
+// getMercuryClient returns the mercury client or an error if not set.
+func (c *Client) getMercuryClient() (*mercury.Client, error) {
 	c.mu.RLock()
 	mc := c.mercuryClient
 	c.mu.RUnlock()
 
 	if mc == nil {
-		return fmt.Errorf("mercury client not set; call SetMercuryClient or use the top-level webex.Client.Conversation() convenience method")
+		return nil, fmt.Errorf("mercury client not set; call SetMercuryClient or use the top-level webex.Client.Conversation() convenience method")
+	}
+	return mc, nil
+}
+
+// Connect starts the Mercury WebSocket connection.
+// This is a convenience method that delegates to the underlying Mercury client.
+// Handlers should be registered with On() before calling Connect().
+func (c *Client) Connect() error {
+	mc, err := c.getMercuryClient()
+	if err != nil {
+		return err
 	}
 	return mc.Connect()
 }
@@ -363,11 +372,8 @@ func (c *Client) Connect() error {
 // Disconnect stops the Mercury WebSocket connection.
 // This is a convenience method that delegates to the underlying Mercury client.
 func (c *Client) Disconnect() error {
-	c.mu.RLock()
-	mc := c.mercuryClient
-	c.mu.RUnlock()
-
-	if mc == nil {
+	mc, err := c.getMercuryClient()
+	if err != nil {
 		return fmt.Errorf("mercury client not set; nothing to disconnect")
 	}
 	return mc.Disconnect()

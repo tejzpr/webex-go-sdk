@@ -245,42 +245,52 @@ func (c *Client) DownloadAudio(recordingID string) (*DownloadedContent, error) {
 	return c.downloadFromURL(audioURL)
 }
 
-// DownloadRecording downloads the video recording (MP4) content.
-// This first fetches the temporary download link, then downloads the recording file.
-func (c *Client) DownloadRecording(recordingID string) (*DownloadedContent, error) {
+// getDownloadLink retrieves a specific download link from a recording.
+func (c *Client) getDownloadLink(recordingID, linkType string) (string, error) {
 	recording, err := c.Get(recordingID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	if recording.TemporaryDirectDownloadLinks == nil {
-		return nil, fmt.Errorf("no temporary download links available for recording %s", recordingID)
+		return "", fmt.Errorf("no temporary download links available for recording %s", recordingID)
 	}
 
-	if recording.TemporaryDirectDownloadLinks.RecordingDownloadLink == "" {
-		return nil, fmt.Errorf("no recording download link available for recording %s", recordingID)
+	var link string
+	switch linkType {
+	case "recording":
+		link = recording.TemporaryDirectDownloadLinks.RecordingDownloadLink
+	case "transcript":
+		link = recording.TemporaryDirectDownloadLinks.TranscriptDownloadLink
+	default:
+		return "", fmt.Errorf("unknown link type: %s", linkType)
 	}
 
-	return c.downloadFromURL(recording.TemporaryDirectDownloadLinks.RecordingDownloadLink)
+	if link == "" {
+		return "", fmt.Errorf("no %s download link available for recording %s", linkType, recordingID)
+	}
+
+	return link, nil
+}
+
+// DownloadRecording downloads the video recording (MP4) content.
+// This first fetches the temporary download link, then downloads the recording file.
+func (c *Client) DownloadRecording(recordingID string) (*DownloadedContent, error) {
+	link, err := c.getDownloadLink(recordingID, "recording")
+	if err != nil {
+		return nil, err
+	}
+	return c.downloadFromURL(link)
 }
 
 // DownloadTranscript downloads the transcript file for a recording.
 // This first fetches the temporary download link, then downloads the transcript.
 func (c *Client) DownloadTranscript(recordingID string) (*DownloadedContent, error) {
-	recording, err := c.Get(recordingID)
+	link, err := c.getDownloadLink(recordingID, "transcript")
 	if err != nil {
 		return nil, err
 	}
-
-	if recording.TemporaryDirectDownloadLinks == nil {
-		return nil, fmt.Errorf("no temporary download links available for recording %s", recordingID)
-	}
-
-	if recording.TemporaryDirectDownloadLinks.TranscriptDownloadLink == "" {
-		return nil, fmt.Errorf("no transcript download link available for recording %s", recordingID)
-	}
-
-	return c.downloadFromURL(recording.TemporaryDirectDownloadLinks.TranscriptDownloadLink)
+	return c.downloadFromURL(link)
 }
 
 // downloadFromURL fetches content from a direct download URL.
