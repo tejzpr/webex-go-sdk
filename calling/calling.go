@@ -17,10 +17,11 @@ type Client struct {
 	core   *webexsdk.Client
 	config *Config
 
-	callHistory  *CallHistoryClient
-	callSettings *CallSettingsClient
-	voicemail    *VoicemailClient
-	contacts     *ContactsClient
+	callHistory   *CallHistoryClient
+	callSettings  *CallSettingsClient
+	voicemail     *VoicemailClient
+	contacts      *ContactsClient
+	callingClient *CallingClient
 }
 
 // New creates a new Calling client.
@@ -65,4 +66,14 @@ func (c *Client) Contacts() *ContactsClient {
 		c.contacts = newContactsClient(c.core, c.config)
 	}
 	return c.contacts
+}
+
+// CallingClient returns the CallingClient sub-client for real-time call control
+// (line registration, dial, answer, hold, transfer, DTMF) using Mobius signaling
+// and Pion WebRTC for media.
+func (c *Client) CallingClient(clientConfig *CallingClientConfig) *CallingClient {
+	if c.callingClient == nil {
+		c.callingClient = NewCallingClient(c.core, c.config, clientConfig)
+	}
+	return c.callingClient
 }
