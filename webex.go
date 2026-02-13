@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/tejzpr/webex-go-sdk/v2/attachmentactions"
+	"github.com/tejzpr/webex-go-sdk/v2/calling"
 	"github.com/tejzpr/webex-go-sdk/v2/conversation"
 	"github.com/tejzpr/webex-go-sdk/v2/device"
 	"github.com/tejzpr/webex-go-sdk/v2/events"
@@ -47,6 +48,7 @@ type WebexClient struct {
 	meetingsClient          *meetings.Client
 	transcriptsClient       *transcripts.Client
 	conversationClient      *conversation.Client
+	callingClient           *calling.Client
 
 	// Internal plugins
 	mercuryClient *mercury.Client
@@ -164,6 +166,15 @@ func (c *WebexClient) Transcripts() *transcripts.Client {
 		c.transcriptsClient = transcripts.New(c.core, nil)
 	}
 	return c.transcriptsClient
+}
+
+// Calling returns the Calling plugin for Webex Calling APIs
+// (Call History, Call Settings, Voicemail, Contacts).
+func (c *WebexClient) Calling() *calling.Client {
+	if c.callingClient == nil {
+		c.callingClient = calling.New(c.core, nil)
+	}
+	return c.callingClient
 }
 
 // Conversation returns a fully-wired Conversation client for real-time
