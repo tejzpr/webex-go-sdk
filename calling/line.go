@@ -8,6 +8,7 @@ package calling
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +63,8 @@ type LineConfig struct {
 	BackupMobiusURLs []string
 	// ClientDeviceURI is the Webex device URL for this client
 	ClientDeviceURI string
+	// UserID is the Webex user ID (from device registration)
+	UserID string
 }
 
 // NewLine creates a new Line instance
@@ -83,6 +86,7 @@ func NewLine(core *webexsdk.Client, config *Config, lineConfig *LineConfig) *Lin
 		l.primaryMobiusURLs = lineConfig.PrimaryMobiusURLs
 		l.backupMobiusURLs = lineConfig.BackupMobiusURLs
 		l.clientDeviceURI = lineConfig.ClientDeviceURI
+		l.UserID = lineConfig.UserID
 	}
 
 	return l
@@ -150,28 +154,58 @@ func (l *Line) attemptRegistration(mobiusURL string) error {
 	}
 
 	url := fmt.Sprintf("%sdevice", mobiusURL)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(payloadBytes))
+	log.Printf("Registration POST %s payload: %s", url, string(payloadBytes))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("error creating registration request: %w", err)
 	}
 
+	trackingID := fmt.Sprintf("webex-go-sdk_%s", uuid.New().String())
 	req.Header.Set("Authorization", "Bearer "+l.core.GetAccessToken())
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("spark-user-agent", "webex-calling/beta")
+	req.Header.Set("trackingid", trackingID)
 	if l.clientDeviceURI != "" {
 		req.Header.Set("cisco-device-url", l.clientDeviceURI)
 	}
-	req.Header.Set("trackingId", fmt.Sprintf("webex-web-client_%s", uuid.New().String()))
 
+	log.Printf("Registration: sending POST to %s ...", url)
 	resp, err := l.core.GetHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("error making registration request: %w", err)
 	}
 	defer resp.Body.Close()
+	log.Printf("Registration: received response status %d from %s", resp.StatusCode, url)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("error reading registration response: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusForbidden {
+		// 403 with errorCode 101 means device already registered — delete old and retry
+		var errResp struct {
+			ErrorCode int `json:"errorCode"`
+			Devices   []struct {
+				DeviceID string `json:"deviceId"`
+				URI      string `json:"uri"`
+			} `json:"devices"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.ErrorCode == 101 && len(errResp.Devices) > 0 {
+			log.Printf("Device already registered (errorCode 101), deleting existing device %s and re-registering", errResp.Devices[0].DeviceID)
+			if delErr := l.deleteDevice(mobiusURL, errResp.Devices[0].DeviceID); delErr != nil {
+				log.Printf("Failed to delete existing device: %v", delErr)
+			} else {
+				// Retry registration after deleting old device
+				return l.attemptRegistration(mobiusURL)
+			}
+		}
+		return fmt.Errorf("registration failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -197,6 +231,40 @@ func (l *Line) attemptRegistration(mobiusURL string) error {
 	l.mu.Unlock()
 
 	return nil
+}
+
+// deleteDevice deletes an existing Mobius device registration by deviceId.
+// This is used when a 403 errorCode 101 is received (device already registered).
+func (l *Line) deleteDevice(mobiusURL string, deviceID string) error {
+	url := fmt.Sprintf("%sdevices/%s", mobiusURL, deviceID)
+	log.Printf("Deleting existing Mobius device: DELETE %s", url)
+
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("error creating delete request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+l.core.GetAccessToken())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("spark-user-agent", "webex-calling/beta")
+	req.Header.Set("trackingid", fmt.Sprintf("webex-go-sdk_%s", uuid.New().String()))
+	if l.clientDeviceURI != "" {
+		req.Header.Set("cisco-device-url", l.clientDeviceURI)
+	}
+
+	resp, err := l.core.GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("error making delete request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		log.Printf("Successfully deleted existing device %s", deviceID)
+		return nil
+	}
+
+	return fmt.Errorf("delete device failed with status %d: %s", resp.StatusCode, string(body))
 }
 
 // onRegistered is called after successful registration

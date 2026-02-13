@@ -194,7 +194,14 @@ func (c *Call) Dial() error {
 	}
 
 	// Filter IPv6 for compatibility
-	sdp = ModifySdpForIPv4(sdp)
+	sdp = ModifySdpForMobius(sdp)
+	log.Printf("Outgoing SDP offer:\n--- Our SDP Offer ---\n%s\n--- End SDP ---", sdp)
+
+	// Set up remote track handler BEFORE postCall so we don't miss the track
+	c.media.OnRemoteTrack(func(track *webrtc.TrackRemote) {
+		log.Printf("Mobius remote track received: codec=%s", track.Codec().MimeType)
+		c.Emitter.Emit(string(CallEventRemoteMedia), track)
+	})
 
 	// Wrap in ROAP and POST to Mobius
 	roapMsg := SDPToRoapOffer(sdp, c.seq)
@@ -214,10 +221,25 @@ func (c *Call) Dial() error {
 
 	log.Printf("Call setup successful, callId=%s correlationId=%s", resp.Body.CallID, c.correlationID)
 
-	// Set up remote track handler for incoming audio
-	c.media.OnRemoteTrack(func(track *webrtc.TrackRemote) {
-		c.Emitter.Emit(string(CallEventRemoteMedia), track)
-	})
+	// Process the ROAP answer from Mobius to complete the WebRTC handshake
+	if resp.Body.LocalMedia != nil && resp.Body.LocalMedia.Roap != nil {
+		roap := resp.Body.LocalMedia.Roap
+		log.Printf("Received ROAP %s from Mobius (seq=%d, sdp length=%d)", roap.MessageType, roap.Seq, len(roap.SDP))
+		if roap.MessageType == RoapMessageAnswer && roap.SDP != "" {
+			if err := c.media.SetRemoteAnswer(roap.SDP); err != nil {
+				log.Printf("Failed to set remote answer from Mobius: %v", err)
+			} else {
+				log.Printf("Set remote SDP answer from Mobius, WebRTC handshake complete")
+				// Send ROAP OK back to Mobius
+				okMsg := NewRoapOK(roap.Seq)
+				if err := c.postMedia(okMsg); err != nil {
+					log.Printf("Failed to send ROAP OK: %v", err)
+				}
+			}
+		}
+	} else {
+		log.Printf("No ROAP answer in Mobius call response — media negotiation may happen via events")
+	}
 
 	c.Emitter.Emit(string(CallEventProgress), c.callID)
 	return nil
@@ -249,7 +271,7 @@ func (c *Call) Answer(remoteOffer string) error {
 		return fmt.Errorf("failed to create SDP answer: %w", err)
 	}
 
-	sdp = ModifySdpForIPv4(sdp)
+	sdp = ModifySdpForMobius(sdp)
 
 	// Send ROAP answer to Mobius via media endpoint
 	roapMsg := SDPToRoapAnswer(sdp, c.seq)
@@ -537,15 +559,19 @@ func (c *Call) handleRoapMessage(msg *RoapMessage) {
 	switch msg.MessageType {
 	case RoapMessageAnswer:
 		// Remote sent an answer to our offer
+		log.Printf("ROAP ANSWER received (seq=%d, sdp length=%d) for callId=%s\n--- Mobius SDP Answer ---\n%s\n--- End SDP ---", msg.Seq, len(msg.SDP), c.callID, msg.SDP)
 		if err := c.media.SetRemoteAnswer(msg.SDP); err != nil {
 			log.Printf("Failed to set remote answer: %v", err)
 			c.Emitter.Emit(string(CallEventError), err)
 			return
 		}
+		log.Printf("Remote SDP answer set successfully, Mobius WebRTC handshake completing for callId=%s", c.callID)
 		// Send ROAP OK
 		okMsg := NewRoapOK(msg.Seq)
 		if err := c.postMedia(okMsg); err != nil {
 			log.Printf("Failed to send ROAP OK: %v", err)
+		} else {
+			log.Printf("ROAP OK sent successfully for callId=%s seq=%d", c.callID, msg.Seq)
 		}
 
 	case RoapMessageOffer:
@@ -634,6 +660,8 @@ func (c *Call) postCall(roapMsg *RoapMessage) (*MobiusCallResponse, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("call request failed with status %d: %s", resp.StatusCode, string(body))
 	}
+
+	log.Printf("Mobius call response (status %d): %s", resp.StatusCode, string(body))
 
 	var callResp MobiusCallResponse
 	callResp.StatusCode = resp.StatusCode
@@ -728,9 +756,10 @@ func (c *Call) postToMobius(url string, payload interface{}) error {
 func (c *Call) setMobiusHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+c.core.GetAccessToken())
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("spark-user-agent", "webex-calling/beta")
 	if c.clientDeviceURI != "" {
 		req.Header.Set("cisco-device-url", c.clientDeviceURI)
 	}
-	req.Header.Set("trackingId", fmt.Sprintf("webex-web-client_%s", uuid.New().String()))
+	req.Header.Set("trackingid", fmt.Sprintf("webex-go-sdk_%s", uuid.New().String()))
 }

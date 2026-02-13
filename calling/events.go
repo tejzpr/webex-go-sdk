@@ -26,18 +26,18 @@ const (
 type CallEventKey string
 
 const (
-	CallEventAlerting     CallEventKey = "alerting"
-	CallEventProgress     CallEventKey = "progress"
-	CallEventConnect      CallEventKey = "connect"
-	CallEventEstablished  CallEventKey = "established"
-	CallEventDisconnect   CallEventKey = "disconnect"
-	CallEventHeld         CallEventKey = "held"
-	CallEventResumed      CallEventKey = "resumed"
-	CallEventRemoteMedia  CallEventKey = "remote_media"
-	CallEventCallerID     CallEventKey = "caller_id"
-	CallEventError        CallEventKey = "call_error"
-	CallEventHoldError    CallEventKey = "hold_error"
-	CallEventResumeError  CallEventKey = "resume_error"
+	CallEventAlerting      CallEventKey = "alerting"
+	CallEventProgress      CallEventKey = "progress"
+	CallEventConnect       CallEventKey = "connect"
+	CallEventEstablished   CallEventKey = "established"
+	CallEventDisconnect    CallEventKey = "disconnect"
+	CallEventHeld          CallEventKey = "held"
+	CallEventResumed       CallEventKey = "resumed"
+	CallEventRemoteMedia   CallEventKey = "remote_media"
+	CallEventCallerID      CallEventKey = "caller_id"
+	CallEventError         CallEventKey = "call_error"
+	CallEventHoldError     CallEventKey = "hold_error"
+	CallEventResumeError   CallEventKey = "resume_error"
 	CallEventTransferError CallEventKey = "transfer_error"
 )
 
@@ -149,17 +149,17 @@ type RoapMessage struct {
 // MobiusCallData represents the data payload in a Mobius call event
 type MobiusCallData struct {
 	CallProgressData *struct {
-		Alerting   bool `json:"alerting"`
+		Alerting    bool `json:"alerting"`
 		InbandMedia bool `json:"inbandMedia"`
 	} `json:"callProgressData,omitempty"`
-	Message       *RoapMessage    `json:"message,omitempty"`
-	CallerID      *CallerIDInfo   `json:"callerId,omitempty"`
-	MidCallService []MidCallEvent `json:"midCallService,omitempty"`
-	CallID        string          `json:"callId"`
-	CallURL       string          `json:"callUrl"`
-	DeviceID      string          `json:"deviceId"`
-	CorrelationID string          `json:"correlationId"`
-	EventType     MobiusEventType `json:"eventType"`
+	Message        *RoapMessage    `json:"message,omitempty"`
+	CallerID       *CallerIDInfo   `json:"callerId,omitempty"`
+	MidCallService []MidCallEvent  `json:"midCallService,omitempty"`
+	CallID         string          `json:"callId"`
+	CallURL        string          `json:"callUrl"`
+	DeviceID       string          `json:"deviceId"`
+	CorrelationID  string          `json:"correlationId"`
+	EventType      MobiusEventType `json:"eventType"`
 }
 
 // CallerIDInfo contains caller identification info from Mobius
@@ -219,6 +219,9 @@ type MobiusCallResponse struct {
 		CallData *struct {
 			CallState string `json:"callState"`
 		} `json:"callData,omitempty"`
+		LocalMedia *struct {
+			Roap *RoapMessage `json:"roap,omitempty"`
+		} `json:"localMedia,omitempty"`
 	} `json:"body"`
 }
 

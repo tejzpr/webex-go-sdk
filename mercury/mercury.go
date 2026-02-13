@@ -770,6 +770,10 @@ func (c *Client) reconnect() {
 	deviceProvider := c.deviceProvider
 	customURL := c.customWebSocketURL
 	c.conn = nil
+	// Recreate channels so the new listen()/startPingPong() goroutines
+	// don't collide with the old ones that may still be shutting down.
+	c.closeCh = make(chan struct{})
+	c.done = make(chan struct{})
 	c.mu.Unlock()
 
 	// Close the old connection if it exists

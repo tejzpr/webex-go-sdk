@@ -263,9 +263,9 @@ func TestRoapHelpers(t *testing.T) {
 		}
 	})
 
-	t.Run("ModifySdpForIPv4", func(t *testing.T) {
+	t.Run("ModifySdpForMobius", func(t *testing.T) {
 		sdp := "v=0\r\na=candidate:1 1 udp 2130706431 192.168.1.1 5000 typ host\r\na=candidate:2 1 udp 2130706431 ::1 5001 typ host generation 0 ufrag abc network-id 1 network-cost 10 IP6 \r\n"
-		result := ModifySdpForIPv4(sdp)
+		result := ModifySdpForMobius(sdp)
 		if result == sdp {
 			t.Error("Expected IPv6 candidates to be removed")
 		}

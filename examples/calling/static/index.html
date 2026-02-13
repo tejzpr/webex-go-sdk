@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webex Calling - Go SDK Example</title>
+  <style>
+    :root {
+      --primary: #00a0d1;
+      --primary-dark: #007a9e;
+      --danger: #e74c3c;
+      --success: #27ae60;
+      --warning: #f39c12;
+      --bg: #f5f7fa;
+      --card: #ffffff;
+      --text: #2c3e50;
+      --text-muted: #7f8c8d;
+      --border: #dce1e8;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: white;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 { font-size: 1.4rem; font-weight: 600; }
+    .header .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .status-badge.connected { background: rgba(39,174,96,0.2); color: #2ecc71; }
+    .status-badge.disconnected { background: rgba(231,76,60,0.2); color: #e74c3c; }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.on { background: #2ecc71; }
+    .status-dot.off { background: #e74c3c; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card h2 .icon { font-size: 1.3rem; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    @media (max-width: 768px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.92rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      background: #fafbfc;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      background: white;
+    }
+    .field { margin-bottom: 14px; }
+    .field .hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: #219a52; }
+    .btn-warning { background: var(--warning); color: white; }
+    .btn-warning:hover { background: #d68910; }
+    .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      border: 1.5px solid var(--primary);
+    }
+    .btn-outline:hover { background: rgba(0,160,209,0.08); }
+    .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+    .log-area {
+      background: #1a1a2e;
+      color: #a8e6cf;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      max-height: 260px;
+      overflow-y: auto;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-area .log-error { color: #ff6b6b; }
+    .log-area .log-success { color: #51cf66; }
+    .log-area .log-info { color: #74c0fc; }
+
+    .dtmf-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      max-width: 220px;
+    }
+    .dtmf-grid button {
+      width: 100%;
+      justify-content: center;
+      font-size: 1.1rem;
+      padding: 12px;
+      background: #ecf0f1;
+      color: var(--text);
+      border-radius: 10px;
+    }
+    .dtmf-grid button:hover { background: #d5dbdb; }
+
+    .call-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+    .call-status-bar.idle { background: #f0f3f5; color: var(--text-muted); }
+    .call-status-bar.active { background: rgba(39,174,96,0.1); color: var(--success); }
+    .call-status-bar.ringing { background: rgba(243,156,18,0.1); color: var(--warning); }
+    .call-status-bar.held { background: rgba(231,76,60,0.1); color: var(--danger); }
+
+    .info-box {
+      background: #eaf6fd;
+      border-left: 4px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .info-box strong { color: var(--primary-dark); }
+    .info-box code {
+      background: rgba(0,0,0,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+    .info-box a { color: var(--primary-dark); }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .result-table th {
+      text-align: left;
+      padding: 8px 10px;
+      background: #f5f7fa;
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+    }
+    .result-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-table tr:last-child td { border-bottom: none; }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Webex Calling &mdash; Go SDK Example</h1>
+  <div id="headerStatus" class="status-badge disconnected">
+    <span class="status-dot off"></span> Disconnected
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Step 1: Connect -->
+  <div class="card">
+    <h2><span class="icon">&#128273;</span> Step 1: Connect with Access Token</h2>
+    <div class="info-box">
+      <strong>Where to get your Access Token:</strong><br>
+      1. Go to <a href="https://developer.webex.com" target="_blank">developer.webex.com</a> and sign in.<br>
+      2. Click your avatar (top-right) &rarr; copy your <strong>Personal Access Token</strong>.<br>
+      3. Or create a Bot/Integration at <a href="https://developer.webex.com/my-apps" target="_blank">My Apps</a> for a long-lived token.<br>
+      <em>Note: Personal tokens expire after 12 hours. The token needs <code>spark:calls_read</code>, <code>spark:calls_write</code>, <code>spark:people_read</code> scopes.</em>
+    </div>
+    <div class="field">
+      <label>Webex Access Token</label>
+      <input type="password" id="accessToken" placeholder="Paste your Webex access token here..." />
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" id="btnConnect" onclick="connect()">Connect</button>
+      <button class="btn-danger" id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="call-control">Call Control</div>
+    <div class="tab" data-tab="rest-apis">REST APIs</div>
+    <div class="tab" data-tab="logs">Activity Log</div>
+  </div>
+
+  <!-- Tab: Call Control -->
+  <div class="tab-content active" id="tab-call-control">
+
+    <!-- Step 2: Register Line -->
+    <div class="card">
+      <h2><span class="icon">&#128222;</span> Step 2: Register Line (Mobius)</h2>
+      <div class="info-box">
+        <strong>Mobius URL</strong> &mdash; Leave blank to auto-discover via Webex region API.<br>
+        Typical format: <code>https://mobius-us-east-1.prod.infra.webex.com/api/v1/calling/web/</code><br><br>
+        <strong>Client Device URI</strong> &mdash; Your Webex device URL from device registration (WDM).<br>
+        Get it from <code>webex.internal.device.url</code> in the JS SDK, or leave blank for testing.
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Primary Mobius URL (optional)</label>
+          <input type="text" id="mobiusUrl" placeholder="Leave blank for auto-discovery" />
+          <div class="hint">Auto-discovered if empty. Override for specific region.</div>
+        </div>
+        <div class="field">
+          <label>Client Device URI (optional)</label>
+          <input type="text" id="clientDeviceUri" placeholder="https://wdm-a.wbx2.com/wdm/api/v1/devices/..." />
+          <div class="hint">From Webex device registration (WDM service).</div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-success" id="btnRegister" onclick="registerLine()" disabled>Register Line</button>
+        <button class="btn-danger" id="btnDeregister" onclick="deregisterLine()" disabled>Deregister</button>
+        <button class="btn-danger" id="btnDeregisterAll" onclick="deregisterAll()" disabled>Deregister All Devices</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Make a Call -->
+    <div class="card">
+      <h2><span class="icon">&#128222;</span> Step 3: Make a Call</h2>
+      <div class="info-box">
+        <strong>Address</strong> &mdash; The SIP URI or phone number to call.<br>
+        Examples: <code>sip:user@example.com</code> (URI type) or <code>+15551234567</code> (TEL type).
+      </div>
+
+      <div id="callStatusBar" class="call-status-bar idle">
+        <span>&#9679;</span> No active call
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Destination Address</label>
+          <input type="text" id="callAddress" placeholder="sip:user@example.com or +15551234567" />
+        </div>
+        <div class="field">
+          <label>Call Type</label>
+          <select id="callType">
+            <option value="uri">URI (SIP address)</option>
+            <option value="tel">TEL (Phone number)</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-success" id="btnDial" onclick="dial()" disabled>&#128222; Dial</button>
+        <button class="btn-danger" id="btnEnd" onclick="endCall()" disabled>&#128308; End</button>
+        <button class="btn-warning" id="btnHold" onclick="hold()" disabled>&#9208; Hold</button>
+        <button class="btn-primary" id="btnResume" onclick="resume()" disabled>&#9654; Resume</button>
+        <button class="btn-outline btn-sm" id="btnMute" onclick="mute()" disabled>&#128263; Mute</button>
+        <button class="btn-outline btn-sm" id="btnUnmute" onclick="unmute()" disabled>&#128266; Unmute</button>
+      </div>
+    </div>
+
+    <!-- DTMF & Transfer -->
+    <div class="grid-2">
+      <div class="card">
+        <h2><span class="icon">&#127925;</span> DTMF Tones</h2>
+        <div class="dtmf-grid">
+          <button onclick="sendDTMF('1')" disabled class="dtmf-btn">1</button>
+          <button onclick="sendDTMF('2')" disabled class="dtmf-btn">2</button>
+          <button onclick="sendDTMF('3')" disabled class="dtmf-btn">3</button>
+          <button onclick="sendDTMF('4')" disabled class="dtmf-btn">4</button>
+          <button onclick="sendDTMF('5')" disabled class="dtmf-btn">5</button>
+          <button onclick="sendDTMF('6')" disabled class="dtmf-btn">6</button>
+          <button onclick="sendDTMF('7')" disabled class="dtmf-btn">7</button>
+          <button onclick="sendDTMF('8')" disabled class="dtmf-btn">8</button>
+          <button onclick="sendDTMF('9')" disabled class="dtmf-btn">9</button>
+          <button onclick="sendDTMF('*')" disabled class="dtmf-btn">*</button>
+          <button onclick="sendDTMF('0')" disabled class="dtmf-btn">0</button>
+          <button onclick="sendDTMF('#')" disabled class="dtmf-btn">#</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="icon">&#128257;</span> Transfer Call</h2>
+        <div class="info-box">
+          <strong>Blind Transfer</strong>: Transfers immediately to the target.<br>
+          <strong>Consult Transfer</strong>: Merges with an existing held call (provide its Call ID).
+        </div>
+        <div class="field">
+          <label>Transfer Type</label>
+          <select id="transferType">
+            <option value="BLIND">Blind Transfer</option>
+            <option value="CONSULT">Consult Transfer</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Transfer Target (Blind) / Transfer Call ID (Consult)</label>
+          <input type="text" id="transferTarget" placeholder="+15559876543 or call-id-for-consult" />
+        </div>
+        <button class="btn-warning" id="btnTransfer" onclick="transfer()" disabled>Transfer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: REST APIs -->
+  <div class="tab-content" id="tab-rest-apis">
+    <div class="grid-2">
+      <div class="card">
+        <h2><span class="icon">&#128214;</span> Call History</h2>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">Last 7 days, up to 10 records.</p>
+        <button class="btn-primary btn-sm" onclick="fetchCallHistory()" id="btnCallHistory" disabled>Fetch Call History</button>
+        <div id="callHistoryResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="icon">&#128276;</span> Do Not Disturb</h2>
+        <button class="btn-primary btn-sm" onclick="fetchDND()" id="btnDND" disabled>Get DND Status</button>
+        <div class="btn-row">
+          <button class="btn-success btn-sm" onclick="setDND(true)" id="btnDNDOn" disabled>Enable DND</button>
+          <button class="btn-danger btn-sm" onclick="setDND(false)" id="btnDNDOff" disabled>Disable DND</button>
+        </div>
+        <div id="dndResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="icon">&#128231;</span> Voicemail</h2>
+        <div class="btn-row">
+          <button class="btn-primary btn-sm" onclick="fetchVoicemailList()" id="btnVM" disabled>List Voicemails</button>
+          <button class="btn-outline btn-sm" onclick="fetchVoicemailSummary()" id="btnVMSummary" disabled>Summary</button>
+        </div>
+        <div id="voicemailResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="icon">&#128101;</span> Contacts</h2>
+        <button class="btn-primary btn-sm" onclick="fetchContacts()" id="btnContacts" disabled>Fetch Contacts</button>
+        <div id="contactsResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <h2><span class="icon">&#9881;</span> Call Settings</h2>
+        <div class="btn-row">
+          <button class="btn-primary btn-sm" onclick="fetchCallWaiting()" id="btnCW" disabled>Call Waiting</button>
+          <button class="btn-outline btn-sm" onclick="fetchCallForward()" id="btnCF" disabled>Call Forward</button>
+        </div>
+        <div id="settingsResult" style="margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Logs -->
+  <div class="tab-content" id="tab-logs">
+    <div class="card">
+      <h2><span class="icon">&#128196;</span> Activity Log</h2>
+      <button class="btn-outline btn-sm" onclick="clearLog()" style="margin-bottom:10px;">Clear</button>
+      <div class="log-area" id="logArea">Webex Calling Example ready.\n</div>
+    </div>
+  </div>
+
+<!-- Hidden audio element for remote call audio -->
+<audio id="remoteAudio" autoplay></audio>
+</div>
+
+<script>
+// ---- Tabs ----
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ---- Logging ----
+function addLog(msg, type) {
+  const el = document.getElementById('logArea');
+  const ts = new Date().toLocaleTimeString();
+  const cls = type === 'error' ? 'log-error' : type === 'success' ? 'log-success' : 'log-info';
+  el.innerHTML += `<span class="${cls}">[${ts}] ${escapeHtml(msg)}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('logArea').innerHTML = ''; }
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---- API Helper ----
+async function api(url, method, body) {
+  const opts = { method: method || 'GET', headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const resp = await fetch(url, opts);
+  const data = await resp.json();
+  if (!resp.ok || data.error) {
+    throw new Error(data.error || `HTTP ${resp.status}`);
+  }
+  return data;
+}
+
+// ---- State ----
+let isConnected = false;
+let isRegistered = false;
+let callActive = false;
+
+function updateUI() {
+  const hdr = document.getElementById('headerStatus');
+  if (isConnected) {
+    hdr.className = 'status-badge connected';
+    hdr.innerHTML = '<span class="status-dot on"></span> Connected';
+  } else {
+    hdr.className = 'status-badge disconnected';
+    hdr.innerHTML = '<span class="status-dot off"></span> Disconnected';
+  }
+
+  document.getElementById('btnConnect').disabled = isConnected;
+  document.getElementById('btnDisconnect').disabled = !isConnected;
+  document.getElementById('btnRegister').disabled = !isConnected || isRegistered;
+  document.getElementById('btnDeregister').disabled = !isRegistered;
+  document.getElementById('btnDeregisterAll').disabled = !isConnected;
+  document.getElementById('btnDial').disabled = !isRegistered || callActive;
+  document.getElementById('btnEnd').disabled = !callActive;
+  document.getElementById('btnHold').disabled = !callActive;
+  document.getElementById('btnResume').disabled = !callActive;
+  document.getElementById('btnMute').disabled = !callActive;
+  document.getElementById('btnUnmute').disabled = !callActive;
+  document.getElementById('btnTransfer').disabled = !callActive;
+
+  document.querySelectorAll('.dtmf-btn').forEach(b => b.disabled = !callActive);
+
+  // REST API buttons
+  ['btnCallHistory','btnDND','btnDNDOn','btnDNDOff','btnVM','btnVMSummary','btnContacts','btnCW','btnCF'].forEach(id => {
+    document.getElementById(id).disabled = !isConnected;
+  });
+}
+
+// ---- Connect / Disconnect ----
+async function connect() {
+  const token = document.getElementById('accessToken').value.trim();
+  if (!token) { alert('Please enter an access token.'); return; }
+  try {
+    addLog('Connecting...', 'info');
+    await api('/api/connect', 'POST', { accessToken: token });
+    isConnected = true;
+    addLog('Connected successfully!', 'success');
+    updateUI();
+  } catch(e) {
+    addLog('Connect failed: ' + e.message, 'error');
+  }
+}
+
+async function disconnect() {
+  try {
+    await api('/api/disconnect', 'POST');
+    isConnected = false;
+    isRegistered = false;
+    callActive = false;
+    stopAudioBridge();
+    addLog('Disconnected.', 'info');
+    updateUI();
+    updateCallStatus('idle', 'No active call');
+  } catch(e) {
+    addLog('Disconnect failed: ' + e.message, 'error');
+  }
+}
+
+// ---- Register / Deregister ----
+async function registerLine() {
+  const mobiusUrl = document.getElementById('mobiusUrl').value.trim();
+  const deviceUri = document.getElementById('clientDeviceUri').value.trim();
+  try {
+    addLog('Registering line with Mobius...', 'info');
+    const data = await api('/api/register', 'POST', {
+      primaryMobiusUrl: mobiusUrl,
+      clientDeviceUri: deviceUri
+    });
+    isRegistered = true;
+    addLog(`Line registered! lineId=${data.lineId} deviceId=${data.deviceId}`, 'success');
+    updateUI();
+  } catch(e) {
+    addLog('Registration failed: ' + e.message, 'error');
+  }
+}
+
+async function deregisterLine() {
+  try {
+    await api('/api/deregister', 'POST');
+    isRegistered = false;
+    callActive = false;
+    addLog('Line deregistered.', 'info');
+    updateUI();
+    updateCallStatus('idle', 'No active call');
+  } catch(e) {
+    addLog('Deregister failed: ' + e.message, 'error');
+  }
+}
+
+async function deregisterAll() {
+  try {
+    addLog('Deregistering all Mobius devices...', 'info');
+    const data = await api('/api/deregister-all', 'POST');
+    isRegistered = false;
+    callActive = false;
+    addLog(`Deregistered all devices. Deleted: ${data.deleted}`, 'success');
+    updateUI();
+    updateCallStatus('idle', 'No active call');
+  } catch(e) {
+    addLog('Deregister all failed: ' + e.message, 'error');
+  }
+}
+
+// ---- Call Control ----
+function updateCallStatus(state, text) {
+  const bar = document.getElementById('callStatusBar');
+  bar.className = 'call-status-bar ' + state;
+  bar.innerHTML = '<span>&#9679;</span> ' + escapeHtml(text);
+}
+
+async function dial() {
+  const address = document.getElementById('callAddress').value.trim();
+  const callType = document.getElementById('callType').value;
+  if (!address) { alert('Enter a destination address.'); return; }
+  try {
+    // Start audio bridge first (mic + speaker)
+    await startAudioBridge();
+
+    addLog(`Dialing ${address} (${callType})...`, 'info');
+    const data = await api('/api/dial', 'POST', { address, callType });
+    callActive = true;
+    addLog(`Call initiated! callId=${data.callId}`, 'success');
+    updateCallStatus('ringing', `Dialing ${address}...`);
+    updateUI();
+  } catch(e) {
+    addLog('Dial failed: ' + e.message, 'error');
+    stopAudioBridge();
+  }
+}
+
+async function endCall() {
+  try {
+    await api('/api/end', 'POST');
+    callActive = false;
+    stopAudioBridge();
+    addLog('Call ended.', 'info');
+    updateCallStatus('idle', 'No active call');
+    updateUI();
+  } catch(e) {
+    addLog('End call failed: ' + e.message, 'error');
+  }
+}
+
+async function hold() {
+  try {
+    await api('/api/hold', 'POST');
+    addLog('Call on hold.', 'info');
+    updateCallStatus('held', 'Call on hold');
+  } catch(e) {
+    addLog('Hold failed: ' + e.message, 'error');
+  }
+}
+
+async function resume() {
+  try {
+    await api('/api/resume', 'POST');
+    addLog('Call resumed.', 'success');
+    updateCallStatus('active', 'Call connected');
+  } catch(e) {
+    addLog('Resume failed: ' + e.message, 'error');
+  }
+}
+
+async function mute() {
+  try {
+    await api('/api/mute', 'POST');
+    addLog('Muted.', 'info');
+  } catch(e) {
+    addLog('Mute failed: ' + e.message, 'error');
+  }
+}
+
+async function unmute() {
+  try {
+    await api('/api/unmute', 'POST');
+    addLog('Unmuted.', 'info');
+  } catch(e) {
+    addLog('Unmute failed: ' + e.message, 'error');
+  }
+}
+
+async function sendDTMF(digit) {
+  try {
+    await api('/api/dtmf', 'POST', { digit });
+    addLog(`DTMF sent: ${digit}`, 'info');
+  } catch(e) {
+    addLog('DTMF failed: ' + e.message, 'error');
+  }
+}
+
+async function transfer() {
+  const transferType = document.getElementById('transferType').value;
+  const target = document.getElementById('transferTarget').value.trim();
+  if (!target) { alert('Enter a transfer target.'); return; }
+  try {
+    const body = { transferType };
+    if (transferType === 'BLIND') body.transferTarget = target;
+    else body.transferCallId = target;
+    await api('/api/transfer', 'POST', body);
+    addLog(`Transfer (${transferType}) completed.`, 'success');
+  } catch(e) {
+    addLog('Transfer failed: ' + e.message, 'error');
+  }
+}
+
+// ---- REST APIs ----
+async function fetchCallHistory() {
+  try {
+    addLog('Fetching call history...', 'info');
+    const data = await api('/api/call-history');
+    const el = document.getElementById('callHistoryResult');
+    if (data.data && data.data.userSessions && data.data.userSessions.length > 0) {
+      let html = '<table class="result-table"><tr><th>Direction</th><th>Other Party</th><th>Disposition</th><th>Duration</th><th>Time</th></tr>';
+      data.data.userSessions.forEach(s => {
+        html += `<tr><td>${s.direction||'-'}</td><td>${s.other?.name||s.other?.phoneNumber||'-'}</td><td>${s.disposition||'-'}</td><td>${s.durationSeconds||0}s</td><td>${s.startTime||'-'}</td></tr>`;
+      });
+      html += '</table>';
+      el.innerHTML = html;
+    } else {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No call history records found.</p>';
+    }
+    addLog('Call history fetched.', 'success');
+  } catch(e) {
+    addLog('Call history failed: ' + e.message, 'error');
+    document.getElementById('callHistoryResult').innerHTML = '<p style="color:var(--danger);font-size:0.85rem;">Error: ' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function fetchDND() {
+  try {
+    const data = await api('/api/call-settings/dnd');
+    document.getElementById('dndResult').innerHTML = '<pre style="font-size:0.82rem;background:#f5f7fa;padding:10px;border-radius:6px;overflow-x:auto;">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    addLog('DND status fetched.', 'success');
+  } catch(e) {
+    addLog('DND fetch failed: ' + e.message, 'error');
+  }
+}
+
+async function setDND(enabled) {
+  try {
+    await api('/api/call-settings/dnd', 'PUT', { enabled });
+    addLog(`DND ${enabled ? 'enabled' : 'disabled'}.`, 'success');
+    fetchDND();
+  } catch(e) {
+    addLog('Set DND failed: ' + e.message, 'error');
+  }
+}
+
+async function fetchVoicemailList() {
+  try {
+    addLog('Fetching voicemails...', 'info');
+    const data = await api('/api/voicemail/list');
+    const el = document.getElementById('voicemailResult');
+    if (data.data && data.data.voicemailList && data.data.voicemailList.length > 0) {
+      let html = '<table class="result-table"><tr><th>From</th><th>Duration</th><th>Read</th></tr>';
+      data.data.voicemailList.forEach(v => {
+        html += `<tr><td>${v.callingPartyInfo?.name||v.callingPartyInfo?.address||'-'}</td><td>${v.duration||'-'}</td><td>${v.read?'Yes':'No'}</td></tr>`;
+      });
+      html += '</table>';
+      el.innerHTML = html;
+    } else {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No voicemails found.</p>';
+    }
+    addLog('Voicemails fetched.', 'success');
+  } catch(e) {
+    addLog('Voicemail list failed: ' + e.message, 'error');
+  }
+}
+
+async function fetchVoicemailSummary() {
+  try {
+    const data = await api('/api/voicemail/summary');
+    document.getElementById('voicemailResult').innerHTML = '<pre style="font-size:0.82rem;background:#f5f7fa;padding:10px;border-radius:6px;overflow-x:auto;">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    addLog('Voicemail summary fetched.', 'success');
+  } catch(e) {
+    addLog('Voicemail summary failed: ' + e.message, 'error');
+  }
+}
+
+async function fetchContacts() {
+  try {
+    addLog('Fetching contacts...', 'info');
+    const data = await api('/api/contacts');
+    const el = document.getElementById('contactsResult');
+    if (data.data && data.data.contacts && data.data.contacts.length > 0) {
+      let html = '<table class="result-table"><tr><th>Name</th><th>Type</th><th>Phone</th></tr>';
+      data.data.contacts.forEach(c => {
+        const phone = c.phoneNumbers && c.phoneNumbers.length > 0 ? c.phoneNumbers[0].value : '-';
+        html += `<tr><td>${c.displayName||c.firstName||'-'}</td><td>${c.contactType||'-'}</td><td>${phone}</td></tr>`;
+      });
+      html += '</table>';
+      el.innerHTML = html;
+    } else {
+      el.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No contacts found.</p>';
+    }
+    addLog('Contacts fetched.', 'success');
+  } catch(e) {
+    addLog('Contacts failed: ' + e.message, 'error');
+  }
+}
+
+async function fetchCallWaiting() {
+  try {
+    const data = await api('/api/call-settings/call-waiting');
+    document.getElementById('settingsResult').innerHTML = '<pre style="font-size:0.82rem;background:#f5f7fa;padding:10px;border-radius:6px;overflow-x:auto;">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    addLog('Call waiting setting fetched.', 'success');
+  } catch(e) {
+    addLog('Call waiting failed: ' + e.message, 'error');
+  }
+}
+
+async function fetchCallForward() {
+  try {
+    const data = await api('/api/call-settings/call-forward');
+    document.getElementById('settingsResult').innerHTML = '<pre style="font-size:0.82rem;background:#f5f7fa;padding:10px;border-radius:6px;overflow-x:auto;">' + escapeHtml(JSON.stringify(data, null, 2)) + '</pre>';
+    addLog('Call forward setting fetched.', 'success');
+  } catch(e) {
+    addLog('Call forward failed: ' + e.message, 'error');
+  }
+}
+
+// ---- Audio Bridge (WebRTC + WebSocket) ----
+let audioWS = null;
+let audioPeerConnection = null;
+let localStream = null;
+
+async function startAudioBridge() {
+  try {
+    addLog('Starting audio bridge...', 'info');
+
+    // Get microphone access
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    addLog('Microphone access granted.', 'success');
+
+    // Create WebSocket to Go server
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    audioWS = new WebSocket(`${wsProto}//${location.host}/ws/audio`);
+
+    audioWS.onopen = () => {
+      addLog('Audio WebSocket connected.', 'success');
+      setupBrowserPeerConnection();
+    };
+
+    audioWS.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'answer') {
+        addLog('Received SDP answer from server.', 'info');
+        audioPeerConnection.setRemoteDescription(new RTCSessionDescription({
+          type: 'answer',
+          sdp: msg.sdp
+        }));
+      } else if (msg.type === 'ice-candidate' && msg.candidate) {
+        audioPeerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate))
+          .catch(e => console.warn('Failed to add ICE candidate:', e));
+      }
+    };
+
+    audioWS.onerror = (e) => {
+      addLog('Audio WebSocket error.', 'error');
+      console.error('Audio WS error:', e);
+    };
+
+    audioWS.onclose = () => {
+      addLog('Audio WebSocket closed.', 'info');
+    };
+  } catch (e) {
+    addLog('Audio bridge failed: ' + e.message, 'error');
+  }
+}
+
+function setupBrowserPeerConnection() {
+  audioPeerConnection = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  // Add mic tracks to the peer connection
+  localStream.getTracks().forEach(track => {
+    audioPeerConnection.addTrack(track, localStream);
+  });
+
+  // When we get remote audio from the server, play it
+  audioPeerConnection.ontrack = (evt) => {
+    addLog('Received remote audio track from server.', 'success');
+    const remoteAudio = document.getElementById('remoteAudio');
+    remoteAudio.srcObject = evt.streams[0];
+  };
+
+  // Send ICE candidates to server
+  audioPeerConnection.onicecandidate = (evt) => {
+    if (evt.candidate && audioWS && audioWS.readyState === WebSocket.OPEN) {
+      audioWS.send(JSON.stringify({
+        type: 'ice-candidate',
+        candidate: evt.candidate.toJSON()
+      }));
+    }
+  };
+
+  audioPeerConnection.onconnectionstatechange = () => {
+    addLog(`Audio bridge: ${audioPeerConnection.connectionState}`, 'info');
+  };
+
+  // Create and send offer
+  audioPeerConnection.createOffer()
+    .then(offer => audioPeerConnection.setLocalDescription(offer))
+    .then(() => {
+      audioWS.send(JSON.stringify({
+        type: 'offer',
+        sdp: audioPeerConnection.localDescription.sdp
+      }));
+      addLog('Sent SDP offer to server.', 'info');
+    })
+    .catch(e => addLog('Failed to create offer: ' + e.message, 'error'));
+}
+
+function stopAudioBridge() {
+  if (audioPeerConnection) {
+    audioPeerConnection.close();
+    audioPeerConnection = null;
+  }
+  if (audioWS) {
+    audioWS.close();
+    audioWS = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  const remoteAudio = document.getElementById('remoteAudio');
+  remoteAudio.srcObject = null;
+  addLog('Audio bridge stopped.', 'info');
+}
+
+// ---- Poll status ----
+async function pollStatus() {
+  try {
+    const data = await api('/api/status');
+    if (data.connected && !isConnected) { isConnected = true; updateUI(); }
+    if (data.registered && !isRegistered) { isRegistered = true; updateUI(); }
+    if (data.callActive && !callActive) {
+      callActive = true;
+      updateCallStatus('active', `Call ${data.callState||'active'} (${data.callDirection||''})`);
+      updateUI();
+    } else if (!data.callActive && callActive) {
+      callActive = false;
+      stopAudioBridge();
+      updateCallStatus('idle', 'Call ended');
+      updateUI();
+    }
+  } catch(e) { /* ignore polling errors */ }
+}
+setInterval(pollStatus, 3000);
+
+// Init
+updateUI();
+</script>
+</body>
+</html>
