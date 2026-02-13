@@ -88,8 +88,8 @@ func TestNewClient(t *testing.T) {
 				return
 			}
 
-			if client.AccessToken != tc.accessToken {
-				t.Errorf("Expected AccessToken %q, got %q", tc.accessToken, client.AccessToken)
+			if client.GetAccessToken() != tc.accessToken {
+				t.Errorf("Expected AccessToken %q, got %q", tc.accessToken, client.GetAccessToken())
 			}
 
 			if tc.config != nil {
@@ -97,8 +97,8 @@ func TestNewClient(t *testing.T) {
 					t.Errorf("Expected BaseURL %q, got %q", tc.config.BaseURL, client.BaseURL.String())
 				}
 
-				if client.HttpClient.Timeout != tc.config.Timeout {
-					t.Errorf("Expected Timeout %v, got %v", tc.config.Timeout, client.HttpClient.Timeout)
+				if client.GetHTTPClient().Timeout != tc.config.Timeout {
+					t.Errorf("Expected Timeout %v, got %v", tc.config.Timeout, client.GetHTTPClient().Timeout)
 				}
 
 				// Check custom headers were set in config
@@ -113,8 +113,8 @@ func TestNewClient(t *testing.T) {
 				if client.BaseURL.String() != defaultConfig.BaseURL {
 					t.Errorf("Expected default BaseURL %q, got %q", defaultConfig.BaseURL, client.BaseURL.String())
 				}
-				if client.HttpClient.Timeout != defaultConfig.Timeout {
-					t.Errorf("Expected default Timeout %v, got %v", defaultConfig.Timeout, client.HttpClient.Timeout)
+				if client.GetHTTPClient().Timeout != defaultConfig.Timeout {
+					t.Errorf("Expected default Timeout %v, got %v", defaultConfig.Timeout, client.GetHTTPClient().Timeout)
 				}
 			}
 		})

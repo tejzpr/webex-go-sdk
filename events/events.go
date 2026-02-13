@@ -45,7 +45,7 @@ type EventData struct {
 	RecordingEnabled     string          `json:"recordingEnabled,omitempty"`
 	HasPostMeetingsChat  string          `json:"hasPostMeetingsChat,omitempty"`
 	// Telephony-related fields
-	CorelationID          string `json:"corelationId,omitempty"`
+	CorrelationID         string `json:"corelationId,omitempty"`
 	CallType              string `json:"callType,omitempty"`
 	UserID                string `json:"userId,omitempty"`
 	UserType              string `json:"userType,omitempty"`

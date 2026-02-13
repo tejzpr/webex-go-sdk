@@ -9,6 +9,7 @@ package conversation
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/tejzpr/webex-go-sdk/v2/encryption"
@@ -261,7 +262,7 @@ func (c *Client) GetMessageContent(activity *Activity) (string, error) {
 			return decryptedContent, nil
 		}
 		// Log error but continue with encrypted content
-		fmt.Printf("Error decrypting message content: %v\n", err)
+		log.Printf("Error decrypting message content: %v", err)
 	}
 
 	return displayName, nil
@@ -325,7 +326,7 @@ func (c *Client) SetMercuryClient(mercuryClient *mercury.Client) {
 
 		activity, err := c.ProcessActivityEvent(event)
 		if err != nil {
-			fmt.Printf("Error processing activity event: %v\n", err)
+			log.Printf("Error processing activity event: %v", err)
 			return
 		}
 
@@ -466,7 +467,7 @@ func (c *Client) dispatchActivity(activity *Activity) {
 			// Decrypt message content inside the goroutine (Option B)
 			if isMessageActivity(activity.Verb) {
 				if err := c.processMessageContent(activity); err != nil {
-					fmt.Printf("Error processing message content: %v\n", err)
+					log.Printf("Error processing message content: %v", err)
 				}
 			}
 			handler(activity)

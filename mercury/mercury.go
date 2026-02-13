@@ -334,7 +334,7 @@ func (c *Client) connectWithBackoff(wsURL string) error {
 // attemptConnection makes a single connection attempt to the Mercury service
 func (c *Client) attemptConnection(wsURL string) error {
 	// Get auth token and prepare URL
-	token := c.webexClient.AccessToken
+	token := c.webexClient.GetAccessToken()
 	parsedURL, err := c.prepareWebSocketURL(wsURL)
 	if err != nil {
 		return err
@@ -400,9 +400,9 @@ func (c *Client) dialWebSocket(url string, token string) (*websocket.Conn, error
 	}
 
 	// Only use the client's transport if it exists
-	if c.webexClient != nil && c.webexClient.HttpClient != nil &&
-		c.webexClient.HttpClient.Transport != nil {
-		if transport, ok := c.webexClient.HttpClient.Transport.(*http.Transport); ok {
+	if c.webexClient != nil && c.webexClient.GetHTTPClient() != nil &&
+		c.webexClient.GetHTTPClient().Transport != nil {
+		if transport, ok := c.webexClient.GetHTTPClient().Transport.(*http.Transport); ok {
 			dialer.NetDialContext = transport.DialContext
 		}
 	}

@@ -201,6 +201,7 @@ func (c *Client) Delete(membershipID string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	// For DELETE operations, we just check the status code
 	if resp.StatusCode != http.StatusNoContent {

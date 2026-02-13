@@ -10,9 +10,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -261,6 +261,7 @@ func (c *Client) Delete(messageID string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	// For DELETE operations, we just check the status code
 	if resp.StatusCode != http.StatusNoContent {
@@ -431,52 +432,6 @@ func resolveFileBytes(file *FileUpload) ([]byte, error) {
 	return nil, fmt.Errorf("no file data provided: set FileBytes or Base64Data")
 }
 
-// inferContentType returns a MIME type guess based on file extension.
-// Falls back to "application/octet-stream" for unknown types.
-func inferContentType(filename string) string {
-	ext := filepath.Ext(filename)
-	switch ext {
-	case ".pdf":
-		return "application/pdf"
-	case ".png":
-		return "image/png"
-	case ".jpg", ".jpeg":
-		return "image/jpeg"
-	case ".gif":
-		return "image/gif"
-	case ".bmp":
-		return "image/bmp"
-	case ".doc":
-		return "application/msword"
-	case ".docx":
-		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-	case ".xls":
-		return "application/vnd.ms-excel"
-	case ".xlsx":
-		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-	case ".ppt":
-		return "application/vnd.ms-powerpoint"
-	case ".pptx":
-		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-	case ".txt":
-		return "text/plain"
-	case ".csv":
-		return "text/csv"
-	case ".json":
-		return "application/json"
-	case ".xml":
-		return "application/xml"
-	case ".zip":
-		return "application/zip"
-	case ".mp4":
-		return "video/mp4"
-	case ".mp3":
-		return "audio/mpeg"
-	default:
-		return "application/octet-stream"
-	}
-}
-
 // Listen starts a real-time stream of message events
 // The provided handler will be called for each new message event
 func (c *Client) Listen(handler MessageHandler) error {
@@ -518,7 +473,7 @@ func (c *Client) Listen(handler MessageHandler) error {
 		// Extract message data and convert to a Message
 		message, err := c.activityToMessage(activity)
 		if err != nil {
-			fmt.Printf("Error converting post activity to message: %v\n", err)
+			log.Printf("Error converting post activity to message: %v", err)
 			return
 		}
 
@@ -530,7 +485,7 @@ func (c *Client) Listen(handler MessageHandler) error {
 		// Extract message data and convert to a Message
 		message, err := c.activityToMessage(activity)
 		if err != nil {
-			fmt.Printf("Error converting share activity to message: %v\n", err)
+			log.Printf("Error converting share activity to message: %v", err)
 			return
 		}
 
@@ -553,7 +508,7 @@ func (c *Client) Listen(handler MessageHandler) error {
 		// Fetch the actual message using the Get method
 		message, err := c.Get(objectID)
 		if err != nil {
-			fmt.Printf("Error fetching message %s: %v\n", objectID, err)
+			log.Printf("Error fetching message %s: %v", objectID, err)
 			return
 		}
 

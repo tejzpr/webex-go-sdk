@@ -26,19 +26,29 @@ type Plugin interface {
 // Client is the main Webex client struct
 type Client struct {
 	// HTTP client used to communicate with the API
-	HttpClient *http.Client
+	httpClient *http.Client
 
 	// Base URL for API requests
 	BaseURL *url.URL
 
 	// Access token for API authentication
-	AccessToken string
+	accessToken string
 
 	// Plugins registered with the client
 	plugins map[string]Plugin
 
 	// Configuration for the client
 	Config *Config
+}
+
+// GetAccessToken returns the access token used for API authentication
+func (c *Client) GetAccessToken() string {
+	return c.accessToken
+}
+
+// GetHTTPClient returns the HTTP client used for API requests
+func (c *Client) GetHTTPClient() *http.Client {
+	return c.httpClient
 }
 
 // Config holds the configuration for the Webex client
@@ -91,9 +101,9 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 	}
 
 	client := &Client{
-		HttpClient:  httpClient,
+		httpClient:  httpClient,
 		BaseURL:     baseURL,
-		AccessToken: accessToken,
+		accessToken: accessToken,
 		plugins:     make(map[string]Plugin),
 		Config:      config,
 	}
@@ -137,7 +147,7 @@ func (c *Client) Request(method, path string, params url.Values, body interface{
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	// Add default headers
@@ -145,7 +155,7 @@ func (c *Client) Request(method, path string, params url.Values, body interface{
 		req.Header.Set(k, v)
 	}
 
-	return c.HttpClient.Do(req)
+	return c.httpClient.Do(req)
 }
 
 // MultipartField represents a text field in a multipart request.
@@ -199,7 +209,7 @@ func (c *Client) RequestMultipart(path string, fields []MultipartField, files []
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	// Add default headers
@@ -207,7 +217,7 @@ func (c *Client) RequestMultipart(path string, fields []MultipartField, files []
 		req.Header.Set(k, v)
 	}
 
-	return c.HttpClient.Do(req)
+	return c.httpClient.Do(req)
 }
 
 // Page represents a paginated response from the Webex API

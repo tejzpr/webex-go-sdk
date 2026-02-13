@@ -142,7 +142,7 @@ func (c *Client) doKMSRetrieve(keyURI string, ecdhCtx *ECDHContext) (*Key, error
 			ClientID: c.getClientID(),
 			Credential: &KMSCredential{
 				UserID: decodeWebexID(userID),
-				Bearer: c.webexClient.AccessToken,
+				Bearer: c.webexClient.GetAccessToken(),
 			},
 		},
 		RequestID: requestID,
@@ -240,7 +240,7 @@ func (c *Client) sendKMSMessage(wrappedMessage string, destination string) ([]st
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

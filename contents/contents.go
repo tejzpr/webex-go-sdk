@@ -99,9 +99,9 @@ func (c *Client) DownloadFromURL(contentURL string) (*FileInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
-	resp, err := c.webexClient.HttpClient.Do(req)
+	resp, err := c.webexClient.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching content: %w", err)
 	}

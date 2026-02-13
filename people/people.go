@@ -123,7 +123,6 @@ func NewBatcher(client *webexsdk.Client, config *Config) *Batcher {
 // Request adds a request to the batch and returns the result
 func (b *Batcher) Request(id string) (*Person, error) {
 	hydraID := InferPersonIDFromUUID(id)
-	fmt.Println("hydraID: ", hydraID)
 	b.mu.Lock()
 
 	// Create a channel for this request

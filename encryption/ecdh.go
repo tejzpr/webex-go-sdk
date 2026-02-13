@@ -199,7 +199,7 @@ func (c *Client) sendECDHRequest(ecdsaPrivKey *ecdsa.PrivateKey, rsaPubKey *rsa.
 			ClientID: c.getClientID(),
 			Credential: &KMSCredential{
 				UserID: decodeWebexID(userID),
-				Bearer: c.webexClient.AccessToken,
+				Bearer: c.webexClient.GetAccessToken(),
 			},
 		},
 		RequestID: requestID,
@@ -357,7 +357,7 @@ func (c *Client) getUserID() (string, error) {
 		return "", fmt.Errorf("error creating people/me request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -408,7 +408,7 @@ func (c *Client) getKMSInfo(userID string) (*KMSInfo, error) {
 		return nil, fmt.Errorf("error creating KMS info request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.httpClient.Do(req)

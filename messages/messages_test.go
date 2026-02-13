@@ -740,46 +740,6 @@ func TestResolveFileBytes_NoData(t *testing.T) {
 	}
 }
 
-// --- inferContentType tests ---
-
-func TestInferContentType(t *testing.T) {
-	tests := []struct {
-		filename string
-		expected string
-	}{
-		{"report.pdf", "application/pdf"},
-		{"photo.png", "image/png"},
-		{"photo.jpg", "image/jpeg"},
-		{"photo.jpeg", "image/jpeg"},
-		{"image.gif", "image/gif"},
-		{"image.bmp", "image/bmp"},
-		{"document.doc", "application/msword"},
-		{"document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-		{"data.xls", "application/vnd.ms-excel"},
-		{"data.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-		{"slides.ppt", "application/vnd.ms-powerpoint"},
-		{"slides.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
-		{"readme.txt", "text/plain"},
-		{"data.csv", "text/csv"},
-		{"config.json", "application/json"},
-		{"schema.xml", "application/xml"},
-		{"archive.zip", "application/zip"},
-		{"video.mp4", "video/mp4"},
-		{"audio.mp3", "audio/mpeg"},
-		{"unknown.xyz", "application/octet-stream"},
-		{"noext", "application/octet-stream"},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.filename, func(t *testing.T) {
-			result := inferContentType(tc.filename)
-			if result != tc.expected {
-				t.Errorf("inferContentType(%q) = %q, want %q", tc.filename, result, tc.expected)
-			}
-		})
-	}
-}
-
 // --- NewAdaptiveCard tests ---
 
 func TestNewAdaptiveCard(t *testing.T) {

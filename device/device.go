@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -124,7 +125,7 @@ func (c *Client) Register() error {
 	}
 
 	// Add headers
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -204,7 +205,7 @@ func (c *Client) Unregister() error {
 	}
 
 	// Add headers
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
 	// Send the request
 	client := &http.Client{}
@@ -328,8 +329,7 @@ func (c *Client) setupRefreshTimer() {
 	c.refreshTimer = time.AfterFunc(refreshTime, func() {
 		if err := c.Refresh(); err != nil {
 			// Log error but don't stop the timer
-			// Using fmt.Printf since we don't want to add a logger dependency
-			fmt.Printf("Error refreshing device: %v\n", err)
+			log.Printf("Error refreshing device: %v", err)
 		}
 	})
 }

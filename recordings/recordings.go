@@ -206,6 +206,7 @@ func (c *Client) Delete(recordingID string) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
@@ -299,9 +300,9 @@ func (c *Client) downloadFromURL(downloadURL string) (*DownloadedContent, error)
 	if err != nil {
 		return nil, fmt.Errorf("error creating download request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.AccessToken)
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
-	resp, err := c.webexClient.HttpClient.Do(req)
+	resp, err := c.webexClient.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error downloading content: %w", err)
 	}
