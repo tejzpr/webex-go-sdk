@@ -916,51 +916,74 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Audio bridge: PC state=%s", s.String())
 	})
 
-	// Start relaying Mobius remote audio to browser (runs when a call is active)
+	// Start relaying Mobius remote audio to browser.
+	// Send PCMU silence (0xFF) at 20ms intervals to keep the browser PC alive
+	// until the Mobius remote track becomes available, then relay real audio.
 	stopRelay := make(chan struct{})
 	go func() {
-		// Wait for a call to become active, then relay
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
-		var relaying bool
+		// PCMU silence: 160 samples at 8kHz = 20ms, 0xFF = digital silence in µ-law
+		silenceBuf := make([]byte, 160)
+		for i := range silenceBuf {
+			silenceBuf[i] = 0xFF
+		}
+
+		var seq uint16
+		var ts uint32
+		const ssrc = 0xDEADBEEF
+		silenceTicker := time.NewTicker(20 * time.Millisecond)
+		defer silenceTicker.Stop()
+
 		for {
 			select {
 			case <-stopRelay:
 				return
-			case <-ticker.C:
-				if relaying {
-					continue
-				}
+			case <-silenceTicker.C:
+				// Check if Mobius remote track is available
 				state.mu.RLock()
 				call := state.activeCall
 				state.mu.RUnlock()
-				if call == nil {
-					continue
-				}
-				remoteTrack := call.GetMedia().GetRemoteTrack()
-				if remoteTrack == nil {
-					continue
-				}
-				relaying = true
-				log.Println("Audio bridge: starting Mobius→Browser relay")
-				go func() {
-					buf := make([]byte, 1500)
-					for {
-						n, _, readErr := remoteTrack.Read(buf)
-						if readErr != nil {
-							log.Printf("Audio bridge: Mobius remote track read ended: %v", readErr)
-							return
-						}
-						pkt := &rtp.Packet{}
-						if err := pkt.Unmarshal(buf[:n]); err != nil {
-							continue
-						}
-						if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
-							log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
-							return
+
+				if call != nil {
+					remoteTrack := call.GetMedia().GetRemoteTrack()
+					if remoteTrack != nil {
+						// Switch to real audio relay
+						silenceTicker.Stop()
+						log.Println("Audio bridge: starting Mobius→Browser relay")
+						buf := make([]byte, 1500)
+						for {
+							n, _, readErr := remoteTrack.Read(buf)
+							if readErr != nil {
+								log.Printf("Audio bridge: Mobius remote track read ended: %v", readErr)
+								return
+							}
+							pkt := &rtp.Packet{}
+							if err := pkt.Unmarshal(buf[:n]); err != nil {
+								continue
+							}
+							if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
+								log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
+								return
+							}
 						}
 					}
-				}()
+				}
+
+				// Send silence to keep browser PC alive
+				pkt := &rtp.Packet{
+					Header: rtp.Header{
+						Version:        2,
+						PayloadType:    0, // PCMU
+						SequenceNumber: seq,
+						Timestamp:      ts,
+						SSRC:           ssrc,
+					},
+					Payload: silenceBuf,
+				}
+				seq++
+				ts += 160
+				if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
+					return
+				}
 			}
 		}
 	}()
