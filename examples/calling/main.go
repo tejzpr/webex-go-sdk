@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
@@ -607,6 +608,16 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 	state.activeCall = call
 	state.mu.Unlock()
 
+	// Clear activeCall when remote party disconnects
+	call.Emitter.On(string(calling.CallEventDisconnect), func(d interface{}) {
+		log.Printf("Call disconnected by remote party, clearing activeCall")
+		state.mu.Lock()
+		if state.activeCall == call {
+			state.activeCall = nil
+		}
+		state.mu.Unlock()
+	})
+
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"status":        "dialing",
 		"callId":        call.GetCallID(),
@@ -800,7 +811,15 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m))
+	// Register default interceptors (RTCP reports, SRTP) — required for
+	// the browser bridge PC to keep the DTLS/SRTP session alive.
+	i := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
+		log.Printf("Audio bridge: failed to register interceptors: %v", err)
+		return
+	}
+
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
 	pc, err := api.NewPeerConnection(webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{URLs: []string{"stun:stun.l.google.com:19302"}},
@@ -937,6 +956,7 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 							continue
 						}
 						if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
+							log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
 							return
 						}
 					}

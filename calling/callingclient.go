@@ -751,6 +751,19 @@ func (cc *CallingClient) HandleMercuryEvent(eventData []byte) {
 func (cc *CallingClient) handleIncomingCall(event *MobiusCallEvent) {
 	data := event.Data
 
+	// Skip incoming call if we already have an active outbound call on the same
+	// device. This handles the self-call scenario where BroadWorks sends both
+	// an outbound and inbound leg — we should only process the outbound one.
+	cc.mu.RLock()
+	for _, call := range cc.activeCalls {
+		if call.GetDirection() == CallDirectionOutbound && call.GetState() != CallStateDisconnected {
+			cc.mu.RUnlock()
+			log.Printf("Ignoring incoming call %s — active outbound call exists on this device", data.CallID)
+			return
+		}
+	}
+	cc.mu.RUnlock()
+
 	// Find the line this call belongs to
 	cc.mu.RLock()
 	var targetLine *Line

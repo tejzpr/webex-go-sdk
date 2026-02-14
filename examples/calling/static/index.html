@@ -840,6 +840,9 @@ let localStream = null;
 
 async function startAudioBridge() {
   try {
+    // Clean up any existing bridge first
+    stopAudioBridge();
+
     addLog('Starting audio bridge...', 'info');
 
     // Get microphone access
