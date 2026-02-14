@@ -77,13 +77,15 @@ func (c *VoicemailClient) GetVoicemailList(offset, offsetLimit int, sort Sort) (
 	result := &VoicemailResponse{StatusCode: statusCode}
 
 	if statusCode >= 200 && statusCode < 300 {
-		var listResp struct {
-			Items []VoicemailMessage `json:"items"`
+		if len(body) > 0 {
+			var listResp struct {
+				Items []VoicemailMessage `json:"items"`
+			}
+			if err := json.Unmarshal(body, &listResp); err != nil {
+				return nil, fmt.Errorf("error parsing response: %w", err)
+			}
+			result.Data.VoicemailList = listResp.Items
 		}
-		if err := json.Unmarshal(body, &listResp); err != nil {
-			return nil, fmt.Errorf("error parsing response: %w", err)
-		}
-		result.Data.VoicemailList = listResp.Items
 		result.Message = "SUCCESS"
 	} else {
 		var errResp struct {
@@ -143,11 +145,13 @@ func (c *VoicemailClient) GetVoicemailSummary() (*VoicemailResponse, error) {
 	result := &VoicemailResponse{StatusCode: statusCode}
 
 	if statusCode >= 200 && statusCode < 300 {
-		summary := &VoicemailSummary{}
-		if err := json.Unmarshal(body, summary); err != nil {
-			return nil, fmt.Errorf("error parsing response: %w", err)
+		if len(body) > 0 {
+			summary := &VoicemailSummary{}
+			if err := json.Unmarshal(body, summary); err != nil {
+				return nil, fmt.Errorf("error parsing response: %w", err)
+			}
+			result.Data.VoicemailSummary = summary
 		}
-		result.Data.VoicemailSummary = summary
 		result.Message = "SUCCESS"
 	} else {
 		var errResp struct {
