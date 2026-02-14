@@ -187,32 +187,32 @@ type DeleteCallHistoryResponse struct {
 
 // ToggleSetting represents a simple on/off setting with optional ring splash
 type ToggleSetting struct {
-	Enabled          bool `json:"enabled"`
+	Enabled           bool  `json:"enabled"`
 	RingSplashEnabled *bool `json:"ringSplashEnabled,omitempty"`
 }
 
 // CallForwardAlwaysSetting configures always-on call forwarding
 type CallForwardAlwaysSetting struct {
-	Enabled                    bool   `json:"enabled"`
-	RingReminderEnabled        *bool  `json:"ringReminderEnabled,omitempty"`
+	Enabled                     bool   `json:"enabled"`
+	RingReminderEnabled         *bool  `json:"ringReminderEnabled,omitempty"`
 	DestinationVoicemailEnabled *bool  `json:"destinationVoicemailEnabled,omitempty"`
-	Destination                string `json:"destination,omitempty"`
+	Destination                 string `json:"destination,omitempty"`
 }
 
 // CallForwardBusySetting configures call forwarding when the line is busy
 type CallForwardBusySetting struct {
-	Enabled                    bool   `json:"enabled"`
+	Enabled                     bool   `json:"enabled"`
 	DestinationVoicemailEnabled *bool  `json:"destinationVoicemailEnabled,omitempty"`
-	Destination                string `json:"destination,omitempty"`
+	Destination                 string `json:"destination,omitempty"`
 }
 
 // CallForwardNoAnswerSetting configures call forwarding when unanswered
 type CallForwardNoAnswerSetting struct {
-	Enabled                    bool   `json:"enabled"`
-	NumberOfRings              *int   `json:"numberOfRings,omitempty"`
-	SystemMaxNumberOfRings     *int   `json:"systemMaxNumberOfRings,omitempty"`
+	Enabled                     bool   `json:"enabled"`
+	NumberOfRings               *int   `json:"numberOfRings,omitempty"`
+	SystemMaxNumberOfRings      *int   `json:"systemMaxNumberOfRings,omitempty"`
 	DestinationVoicemailEnabled *bool  `json:"destinationVoicemailEnabled,omitempty"`
-	Destination                string `json:"destination,omitempty"`
+	Destination                 string `json:"destination,omitempty"`
 }
 
 // CallForwardingConfig groups all call forwarding rules
@@ -224,21 +224,21 @@ type CallForwardingConfig struct {
 
 // BusinessContinuitySetting configures forwarding when the line is offline
 type BusinessContinuitySetting struct {
-	Enabled                    bool   `json:"enabled"`
+	Enabled                     bool   `json:"enabled"`
 	DestinationVoicemailEnabled *bool  `json:"destinationVoicemailEnabled,omitempty"`
-	Destination                string `json:"destination,omitempty"`
+	Destination                 string `json:"destination,omitempty"`
 }
 
 // CallForwardSetting is the full call forward configuration
 type CallForwardSetting struct {
-	CallForwarding    CallForwardingConfig      `json:"callForwarding"`
+	CallForwarding     CallForwardingConfig      `json:"callForwarding"`
 	BusinessContinuity BusinessContinuitySetting `json:"businessContinuity"`
 }
 
 // VoicemailSettingConfig is the full voicemail configuration
 type VoicemailSettingConfig struct {
-	Enabled            bool `json:"enabled"`
-	SendAllCalls       *struct {
+	Enabled      bool `json:"enabled"`
+	SendAllCalls *struct {
 		Enabled bool `json:"enabled"`
 	} `json:"sendAllCalls,omitempty"`
 	SendBusyCalls struct {
@@ -310,7 +310,7 @@ type VoicemailSummary struct {
 type VoicemailMessage struct {
 	MessageID        string                    `json:"messageId"`
 	Duration         string                    `json:"duration"`
-	CallingPartyInfo VoicemailCallingPartyInfo  `json:"callingPartyInfo"`
+	CallingPartyInfo VoicemailCallingPartyInfo `json:"callingPartyInfo"`
 	Time             int64                     `json:"time"`
 	Read             bool                      `json:"read"`
 }
@@ -361,27 +361,27 @@ type Address struct {
 
 // Contact represents a single contact
 type Contact struct {
-	AddressInfo          *Address     `json:"addressInfo,omitempty"`
-	AvatarURL            string       `json:"avatarURL,omitempty"`
-	AvatarURLDomain      string       `json:"avatarUrlDomain,omitempty"`
-	CompanyName          string       `json:"companyName,omitempty"`
-	ContactID            string       `json:"contactId"`
-	ContactType          ContactType  `json:"contactType"`
-	Department           string       `json:"department,omitempty"`
-	DisplayName          string       `json:"displayName,omitempty"`
-	Emails               []URIAddress `json:"emails,omitempty"`
-	EncryptionKeyURL     string       `json:"encryptionKeyUrl"`
-	FirstName            string       `json:"firstName,omitempty"`
-	Groups               []string     `json:"groups"`
-	KmsResourceObjectURL string       `json:"kmsResourceObjectUrl,omitempty"`
-	LastName             string       `json:"lastName,omitempty"`
-	Manager              string       `json:"manager,omitempty"`
-	OwnerID              string       `json:"ownerId,omitempty"`
+	AddressInfo          *Address      `json:"addressInfo,omitempty"`
+	AvatarURL            string        `json:"avatarURL,omitempty"`
+	AvatarURLDomain      string        `json:"avatarUrlDomain,omitempty"`
+	CompanyName          string        `json:"companyName,omitempty"`
+	ContactID            string        `json:"contactId"`
+	ContactType          ContactType   `json:"contactType"`
+	Department           string        `json:"department,omitempty"`
+	DisplayName          string        `json:"displayName,omitempty"`
+	Emails               []URIAddress  `json:"emails,omitempty"`
+	EncryptionKeyURL     string        `json:"encryptionKeyUrl"`
+	FirstName            string        `json:"firstName,omitempty"`
+	Groups               []string      `json:"groups"`
+	KmsResourceObjectURL string        `json:"kmsResourceObjectUrl,omitempty"`
+	LastName             string        `json:"lastName,omitempty"`
+	Manager              string        `json:"manager,omitempty"`
+	OwnerID              string        `json:"ownerId,omitempty"`
 	PhoneNumbers         []PhoneNumber `json:"phoneNumbers,omitempty"`
-	PrimaryContactMethod string       `json:"primaryContactMethod,omitempty"`
-	Schemas              string       `json:"schemas,omitempty"`
-	SipAddresses         []URIAddress `json:"sipAddresses,omitempty"`
-	Resolved             bool         `json:"resolved"`
+	PrimaryContactMethod string        `json:"primaryContactMethod,omitempty"`
+	Schemas              string        `json:"schemas,omitempty"`
+	SipAddresses         []URIAddress  `json:"sipAddresses,omitempty"`
+	Resolved             bool          `json:"resolved"`
 }
 
 // ContactGroup represents a contact group

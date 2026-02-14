@@ -571,14 +571,32 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize address to match JS SDK behavior:
+	// - Phone numbers (digits, +, *, #) → type "uri", address "tel:<sanitized>"
+	// - SIP URIs (sip:...) → type "uri", address as-is
+	address := strings.TrimSpace(req.Address)
 	ct := calling.CallTypeURI
-	if req.CallType == "tel" {
-		ct = calling.CallTypeTEL
+
+	if strings.HasPrefix(address, "sip:") || strings.HasPrefix(address, "sips:") {
+		// SIP URI — pass through as-is
+		log.Printf("Dial: using SIP URI as-is: %s", address)
+	} else if strings.HasPrefix(address, "tel:") {
+		// Already tel: formatted
+		log.Printf("Dial: using tel URI as-is: %s", address)
+	} else {
+		// Assume phone number — sanitize and add tel: prefix (JS SDK behavior)
+		sanitized := sanitizePhoneNumber(address)
+		if sanitized == "" {
+			jsonError(w, http.StatusBadRequest, "Invalid phone number")
+			return
+		}
+		address = "tel:" + sanitized
+		log.Printf("Dial: normalized phone number to: %s", address)
 	}
 
 	call, err := cc.MakeCall(line, &calling.CallDetails{
 		Type:    ct,
-		Address: req.Address,
+		Address: address,
 	})
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("Dial failed: %v", err))
@@ -1035,4 +1053,18 @@ func handleTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "transferred"})
+}
+
+// sanitizePhoneNumber strips non-phone characters from a string,
+// matching the JS SDK's VALID_PHONE_REGEX /[\d\s()*#+.-]+/ behavior.
+// Returns the sanitized number or empty string if invalid.
+func sanitizePhoneNumber(input string) string {
+	var b strings.Builder
+	for _, r := range input {
+		if (r >= '0' && r <= '9') || r == '+' || r == '*' || r == '#' {
+			b.WriteRune(r)
+		}
+		// Skip spaces, parens, dots, dashes (JS SDK strips these)
+	}
+	return b.String()
 }
