@@ -8,14 +8,23 @@ package webexsdk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
+
+// Logger is the interface for SDK logging. Any logger that implements Printf
+// (such as the standard library's *log.Logger) can be used.
+type Logger interface {
+	Printf(format string, v ...any)
+}
 
 // Plugin represents a Webex API plugin
 type Plugin interface {
@@ -39,6 +48,9 @@ type Client struct {
 
 	// Configuration for the client
 	Config *Config
+
+	// Logger for SDK operations
+	logger Logger
 }
 
 // GetAccessToken returns the access token used for API authentication
@@ -49,6 +61,11 @@ func (c *Client) GetAccessToken() string {
 // GetHTTPClient returns the HTTP client used for API requests
 func (c *Client) GetHTTPClient() *http.Client {
 	return c.httpClient
+}
+
+// GetLogger returns the logger used by the SDK.
+func (c *Client) GetLogger() Logger {
+	return c.logger
 }
 
 // Config holds the configuration for the Webex client
@@ -65,6 +82,18 @@ type Config struct {
 	// Custom HTTP client to use instead of the default one
 	// If nil, a default client will be created with the specified Timeout
 	HttpClient *http.Client
+
+	// MaxRetries is the maximum number of retries for transient errors (429, 502, 503, 504).
+	// Set to 0 to disable retries. Default: 3.
+	MaxRetries int
+
+	// RetryBaseDelay is the initial delay between retries. Default: 1s.
+	// Subsequent retries use exponential backoff (delay * 2^attempt).
+	RetryBaseDelay time.Duration
+
+	// Logger is the logger for SDK operations. If nil, the standard library's
+	// default logger (log.Default()) is used.
+	Logger Logger
 }
 
 // DefaultConfig returns a default configuration for the Webex client
@@ -74,6 +103,8 @@ func DefaultConfig() *Config {
 		Timeout:        30 * time.Second,
 		DefaultHeaders: make(map[string]string),
 		HttpClient:     nil,
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Second,
 	}
 }
 
@@ -100,11 +131,18 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 		}
 	}
 
+	// Set up logger - use provided logger or default
+	logger := config.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+
 	client := &Client{
 		httpClient:  httpClient,
 		BaseURL:     baseURL,
 		accessToken: accessToken,
 		plugins:     make(map[string]Plugin),
+		logger:      logger,
 		Config:      config,
 	}
 
@@ -122,8 +160,16 @@ func (c *Client) GetPlugin(name string) (Plugin, bool) {
 	return plugin, ok
 }
 
-// Request performs an HTTP request to the Webex API
+// Request performs an HTTP request to the Webex API.
+// The caller is responsible for closing the response body when done.
 func (c *Client) Request(method, path string, params url.Values, body interface{}) (*http.Response, error) {
+	return c.RequestWithContext(context.Background(), method, path, params, body)
+}
+
+// RequestWithContext performs an HTTP request to the Webex API with the given context.
+// The context can be used for per-request timeouts and cancellation.
+// The caller is responsible for closing the response body when done.
+func (c *Client) RequestWithContext(ctx context.Context, method, path string, params url.Values, body interface{}) (*http.Response, error) {
 	u, err := url.Parse(c.BaseURL.String() + "/" + path)
 	if err != nil {
 		return nil, err
@@ -142,7 +188,7 @@ func (c *Client) Request(method, path string, params url.Values, body interface{
 		bodyReader = bytes.NewReader(bodyBytes)
 	}
 
-	req, err := http.NewRequest(method, u.String(), bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +202,73 @@ func (c *Client) Request(method, path string, params url.Values, body interface{
 	}
 
 	return c.httpClient.Do(req)
+}
+
+// RequestWithRetry performs an HTTP request with automatic retry for transient errors.
+// It retries on HTTP 429 (Too Many Requests, respecting Retry-After header) and
+// transient server errors (502, 503, 504) using exponential backoff.
+// The caller is responsible for closing the response body when done.
+func (c *Client) RequestWithRetry(ctx context.Context, method, path string, params url.Values, body interface{}) (*http.Response, error) {
+	maxRetries := c.Config.MaxRetries
+	baseDelay := c.Config.RetryBaseDelay
+	if baseDelay == 0 {
+		baseDelay = 1 * time.Second
+	}
+
+	var resp *http.Response
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = c.RequestWithContext(ctx, method, path, params, body)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if we should retry
+		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+			return resp, nil
+		}
+
+		// Determine delay
+		delay := retryDelay(resp, baseDelay, attempt)
+
+		// Close the response body before retrying
+		resp.Body.Close()
+
+		// Wait with context cancellation support
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return resp, err
+}
+
+// isRetryableStatus returns true for HTTP status codes that should be retried.
+func isRetryableStatus(statusCode int) bool {
+	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusBadGateway ||
+		statusCode == http.StatusServiceUnavailable ||
+		statusCode == http.StatusGatewayTimeout
+}
+
+// retryDelay calculates the delay before the next retry attempt.
+// For 429 responses, it respects the Retry-After header if present.
+// Otherwise, it uses exponential backoff: baseDelay * 2^attempt.
+func retryDelay(resp *http.Response, baseDelay time.Duration, attempt int) time.Duration {
+	if resp.StatusCode == http.StatusTooManyRequests {
+		if ra := resp.Header.Get("Retry-After"); ra != "" {
+			if seconds, err := strconv.Atoi(ra); err == nil && seconds > 0 {
+				return time.Duration(seconds) * time.Second
+			}
+		}
+	}
+	// Exponential backoff
+	return baseDelay * (1 << uint(attempt))
 }
 
 // MultipartField represents a text field in a multipart request.
@@ -173,6 +286,7 @@ type MultipartFile struct {
 
 // RequestMultipart performs a multipart/form-data POST request to the Webex API.
 // This is required for local file uploads (e.g., sending messages with attachments).
+// The caller is responsible for closing the response body when done.
 func (c *Client) RequestMultipart(path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
 	u, err := url.Parse(c.BaseURL.String() + "/" + path)
 	if err != nil {

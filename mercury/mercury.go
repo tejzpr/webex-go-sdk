@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,7 @@ type Config struct {
 	BackoffTimeReset            time.Duration // Initial time before the first retry
 	MaxRetries                  int           // Number of times to retry before giving up
 	InitialConnectionMaxRetries int           // Number of times to retry before giving up on the initial connection
+	FallbackWebSocketURL        string        // Fallback WebSocket URL when no DeviceProvider is available. Default: wss://mercury-connection-a.wbx2.com/mercury/device
 }
 
 // DefaultConfig returns the default configuration for the Mercury plugin
@@ -40,6 +42,7 @@ func DefaultConfig() *Config {
 		BackoffTimeReset:            1 * time.Second,
 		MaxRetries:                  3,
 		InitialConnectionMaxRetries: 5,
+		FallbackWebSocketURL:        "wss://mercury-connection-a.wbx2.com/mercury/device",
 	}
 }
 
@@ -641,13 +644,16 @@ func (c *Client) handleConversationActivity(event *Event) {
 		messageEvent.EventType = "message.created"
 
 		c.mu.Lock()
-		handlers, ok := c.eventHandlers["message.created"]
+		original, ok := c.eventHandlers["message.created"]
+		var handlers []EventHandler
+		if ok {
+			handlers = make([]EventHandler, len(original))
+			copy(handlers, original)
+		}
 		c.mu.Unlock()
 
-		if ok {
-			for _, handler := range handlers {
-				go handler(&messageEvent)
-			}
+		for _, handler := range handlers {
+			go handler(&messageEvent)
 		}
 	}
 }
@@ -655,35 +661,39 @@ func (c *Client) handleConversationActivity(event *Event) {
 // dispatchEvent dispatches an event to all relevant handlers
 func (c *Client) dispatchEvent(event *Event) {
 	c.mu.Lock()
-	// Get all relevant handlers
-	handlers, hasHandlers := c.eventHandlers[event.EventType]
-
-	var activityHandlers []EventHandler
-	var hasActivityHandlers bool
-	if event.EventType == "conversation.activity" && event.ActivityType != "" {
-		activityHandlers, hasActivityHandlers = c.eventHandlers["activity:"+event.ActivityType]
+	// Copy all relevant handler slices under the lock to prevent races
+	var handlers []EventHandler
+	if orig, ok := c.eventHandlers[event.EventType]; ok {
+		handlers = make([]EventHandler, len(orig))
+		copy(handlers, orig)
 	}
 
-	wildcardHandlers, hasWildcardHandlers := c.eventHandlers["*"]
+	var activityHandlers []EventHandler
+	if event.EventType == "conversation.activity" && event.ActivityType != "" {
+		if orig, ok := c.eventHandlers["activity:"+event.ActivityType]; ok {
+			activityHandlers = make([]EventHandler, len(orig))
+			copy(activityHandlers, orig)
+		}
+	}
+
+	var wildcardHandlers []EventHandler
+	if orig, ok := c.eventHandlers["*"]; ok {
+		wildcardHandlers = make([]EventHandler, len(orig))
+		copy(wildcardHandlers, orig)
+	}
 	c.mu.Unlock()
 
 	// Call handlers concurrently
-	if hasHandlers {
-		for _, handler := range handlers {
-			go handler(event)
-		}
+	for _, handler := range handlers {
+		go handler(event)
 	}
 
-	if hasActivityHandlers {
-		for _, handler := range activityHandlers {
-			go handler(event)
-		}
+	for _, handler := range activityHandlers {
+		go handler(event)
 	}
 
-	if hasWildcardHandlers {
-		for _, handler := range wildcardHandlers {
-			go handler(event)
-		}
+	for _, handler := range wildcardHandlers {
+		go handler(event)
 	}
 }
 
@@ -741,11 +751,11 @@ func (c *Client) handlePong(data string) error {
 		return nil
 	}
 
-	// Calculate time offset if pong contains timestamp
+	// Calculate time offset if pong contains timestamp (sent as UnixMilli)
 	if data != "" {
-		pingTime, err := time.Parse(time.RFC3339, data)
+		pingTimeMs, err := strconv.ParseInt(data, 10, 64)
 		if err == nil {
-			c.timeOffset = time.Now().UnixMilli() - pingTime.UnixMilli()
+			c.timeOffset = time.Now().UnixMilli() - pingTimeMs
 		}
 	}
 
@@ -825,5 +835,8 @@ func (c *Client) getReconnectURL(deviceProvider DeviceProvider, customURL string
 	}
 
 	// Default fallback URL
+	if c.config.FallbackWebSocketURL != "" {
+		return c.config.FallbackWebSocketURL
+	}
 	return "wss://mercury-connection-a.wbx2.com/mercury/device"
 }

@@ -258,3 +258,186 @@ func TestGetMe(t *testing.T) {
 		t.Errorf("Expected last name 'User', got '%s'", me.LastName)
 	}
 }
+
+func newTestPeopleServer(t *testing.T, people []Person) (*httptest.Server, *webexsdk.Client) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		if r.URL.Path == "/people" {
+			// Filter by requested IDs
+			requestedIDs := r.URL.Query()["id"]
+			var result []Person
+			for _, p := range people {
+				for _, id := range requestedIDs {
+					if p.ID == id {
+						result = append(result, p)
+					}
+				}
+			}
+			if result == nil {
+				result = []Person{}
+			}
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(struct {
+				Items []Person `json:"items"`
+			}{Items: result})
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:    server.URL,
+		Timeout:    5 * time.Second,
+		HttpClient: server.Client(),
+	}
+	client, err := webexsdk.NewClient("test-token", config)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	client.BaseURL = baseURL
+	return server, client
+}
+
+func TestBatchRequest_Empty(t *testing.T) {
+	server, client := newTestPeopleServer(t, nil)
+	defer server.Close()
+
+	batcher := NewBatcher(client, DefaultConfig())
+	result, err := batcher.BatchRequest([]string{})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected 0 results, got %d", len(result))
+	}
+}
+
+func TestBatchRequest_SingleID(t *testing.T) {
+	// BatchRequest converts IDs via InferPersonIDFromUUID, so store with Hydra IDs
+	people := []Person{
+		{ID: InferPersonIDFromUUID("id-1"), DisplayName: "Alice", Emails: []string{"alice@example.com"}},
+		{ID: InferPersonIDFromUUID("id-2"), DisplayName: "Bob", Emails: []string{"bob@example.com"}},
+	}
+	server, client := newTestPeopleServer(t, people)
+	defer server.Close()
+
+	batcher := NewBatcher(client, DefaultConfig())
+	result, err := batcher.BatchRequest([]string{"id-1"})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(result))
+	}
+	if result[0].DisplayName != "Alice" {
+		t.Errorf("Expected 'Alice', got '%s'", result[0].DisplayName)
+	}
+}
+
+func TestBatchRequest_MultipleIDs(t *testing.T) {
+	people := []Person{
+		{ID: InferPersonIDFromUUID("id-1"), DisplayName: "Alice"},
+		{ID: InferPersonIDFromUUID("id-2"), DisplayName: "Bob"},
+		{ID: InferPersonIDFromUUID("id-3"), DisplayName: "Charlie"},
+	}
+	server, client := newTestPeopleServer(t, people)
+	defer server.Close()
+
+	batcher := NewBatcher(client, DefaultConfig())
+	result, err := batcher.BatchRequest([]string{"id-1", "id-3"})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(result))
+	}
+
+	names := map[string]bool{}
+	for _, p := range result {
+		names[p.DisplayName] = true
+	}
+	if !names["Alice"] || !names["Charlie"] {
+		t.Errorf("Expected Alice and Charlie, got %v", names)
+	}
+}
+
+func TestBatchRequest_NotFound(t *testing.T) {
+	people := []Person{
+		{ID: "id-1", DisplayName: "Alice"},
+	}
+	server, client := newTestPeopleServer(t, people)
+	defer server.Close()
+
+	batcher := NewBatcher(client, DefaultConfig())
+	result, err := batcher.BatchRequest([]string{"id-nonexistent"})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected 0 results for nonexistent ID, got %d", len(result))
+	}
+}
+
+func TestBatchRequest_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"message":"internal error"}`))
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:    server.URL,
+		Timeout:    5 * time.Second,
+		HttpClient: server.Client(),
+	}
+	client, err := webexsdk.NewClient("test-token", config)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	client.BaseURL = baseURL
+
+	batcher := NewBatcher(client, DefaultConfig())
+	_, err = batcher.BatchRequest([]string{"id-1"})
+	if err == nil {
+		t.Fatal("Expected error for server error response, got nil")
+	}
+}
+
+func TestBatcher_AsyncRequest(t *testing.T) {
+	people := []Person{
+		{ID: InferPersonIDFromUUID("uuid-1"), DisplayName: "Alice"},
+	}
+	server, client := newTestPeopleServer(t, people)
+	defer server.Close()
+
+	cfg := DefaultConfig()
+	cfg.BatcherWait = 50 * time.Millisecond
+	batcher := NewBatcher(client, cfg)
+
+	person, err := batcher.Request("uuid-1")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if person.DisplayName != "Alice" {
+		t.Errorf("Expected 'Alice', got '%s'", person.DisplayName)
+	}
+}
+
+func TestBatcher_AsyncRequest_NotFound(t *testing.T) {
+	server, client := newTestPeopleServer(t, nil)
+	defer server.Close()
+
+	cfg := DefaultConfig()
+	cfg.BatcherWait = 50 * time.Millisecond
+	batcher := NewBatcher(client, cfg)
+
+	_, err := batcher.Request("nonexistent-uuid")
+	if err == nil {
+		t.Fatal("Expected error for nonexistent person, got nil")
+	}
+}

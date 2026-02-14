@@ -8,6 +8,7 @@ package mercury
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -254,6 +255,272 @@ func TestEventParsing(t *testing.T) {
 			t.Errorf("Expected eventType 'conversation.activity', got %v", event.Data["eventType"])
 		}
 	})
+}
+
+func TestClearHandlers(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	mc.On("test.event", func(event *Event) {})
+	mc.On("test.event", func(event *Event) {})
+	mc.On("other.event", func(event *Event) {})
+
+	mc.ClearHandlers("test.event")
+
+	mc.mu.Lock()
+	testHandlers := mc.eventHandlers["test.event"]
+	otherHandlers := mc.eventHandlers["other.event"]
+	mc.mu.Unlock()
+
+	if len(testHandlers) != 0 {
+		t.Errorf("Expected 0 handlers after ClearHandlers, got %d", len(testHandlers))
+	}
+	if len(otherHandlers) != 1 {
+		t.Errorf("Expected 1 handler for other.event, got %d", len(otherHandlers))
+	}
+}
+
+func TestEventHandlers(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	mc.On("a", func(event *Event) {})
+	mc.On("b", func(event *Event) {})
+	mc.On("b", func(event *Event) {})
+
+	handlers := mc.EventHandlers()
+	if len(handlers["a"]) != 1 {
+		t.Errorf("Expected 1 handler for 'a', got %d", len(handlers["a"]))
+	}
+	if len(handlers["b"]) != 2 {
+		t.Errorf("Expected 2 handlers for 'b', got %d", len(handlers["b"]))
+	}
+}
+
+func TestDispatchEvent(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	typedCh := make(chan string, 1)
+	wildcardCh := make(chan string, 1)
+	activityCh := make(chan string, 1)
+
+	mc.On("conversation.activity", func(event *Event) {
+		typedCh <- "typed"
+	})
+	mc.On("*", func(event *Event) {
+		wildcardCh <- "wildcard"
+	})
+	mc.On("activity:post", func(event *Event) {
+		activityCh <- "activity"
+	})
+
+	event := &Event{
+		EventType:    "conversation.activity",
+		ActivityType: "post",
+	}
+	mc.dispatchEvent(event)
+
+	// Wait for all handlers to fire
+	timeout := time.After(2 * time.Second)
+	for i := 0; i < 3; i++ {
+		select {
+		case <-typedCh:
+		case <-wildcardCh:
+		case <-activityCh:
+		case <-timeout:
+			t.Fatal("Timed out waiting for handlers")
+		}
+	}
+}
+
+func TestDispatchEvent_NoHandlers(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	// Should not panic with no handlers registered
+	event := &Event{EventType: "unknown.event"}
+	mc.dispatchEvent(event)
+}
+
+func TestHandleConversationActivity_Post(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	ch := make(chan *Event, 1)
+	mc.On("message.created", func(event *Event) {
+		ch <- event
+	})
+
+	event := &Event{
+		EventType:    "conversation.activity",
+		ActivityType: "post",
+		ID:           "evt-1",
+	}
+	mc.handleConversationActivity(event)
+
+	select {
+	case received := <-ch:
+		if received.EventType != "message.created" {
+			t.Errorf("Expected EventType 'message.created', got %q", received.EventType)
+		}
+		if received.ID != "evt-1" {
+			t.Errorf("Expected ID 'evt-1', got %q", received.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for message.created handler")
+	}
+}
+
+func TestHandleConversationActivity_Share(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	ch := make(chan *Event, 1)
+	mc.On("message.created", func(event *Event) {
+		ch <- event
+	})
+
+	event := &Event{
+		EventType:    "conversation.activity",
+		ActivityType: "share",
+	}
+	mc.handleConversationActivity(event)
+
+	select {
+	case <-ch:
+		// OK
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timed out waiting for message.created handler on share")
+	}
+}
+
+func TestHandleConversationActivity_NonMessage(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	called := false
+	mc.On("message.created", func(event *Event) {
+		called = true
+	})
+
+	event := &Event{
+		EventType:    "conversation.activity",
+		ActivityType: "acknowledge",
+	}
+	mc.handleConversationActivity(event)
+
+	// Give a moment for any goroutine to fire
+	time.Sleep(50 * time.Millisecond)
+	if called {
+		t.Error("message.created handler should not fire for acknowledge activity")
+	}
+}
+
+func TestHandlePong(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	t.Run("empty data", func(t *testing.T) {
+		err := mc.handlePong("")
+		if err != nil {
+			t.Errorf("Expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("valid timestamp with nil conn", func(t *testing.T) {
+		// handlePong returns nil early when conn is nil (before calculating offset)
+		pingTime := time.Now().Add(-100 * time.Millisecond).UnixMilli()
+		data := fmt.Sprintf("%d", pingTime)
+
+		err := mc.handlePong(data)
+		if err != nil {
+			t.Errorf("Expected nil error, got %v", err)
+		}
+
+		// With nil conn, handlePong returns early — timeOffset stays 0
+		mc.mu.Lock()
+		offset := mc.timeOffset
+		mc.mu.Unlock()
+		if offset != 0 {
+			t.Errorf("Expected timeOffset 0 with nil conn, got %dms", offset)
+		}
+	})
+
+	t.Run("invalid data", func(t *testing.T) {
+		err := mc.handlePong("not-a-number")
+		if err != nil {
+			t.Errorf("Expected nil error for invalid data, got %v", err)
+		}
+		// timeOffset should remain from previous test (not reset to 0)
+	})
+}
+
+func TestListenStopListening(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	// Listen and StopListening are aliases for Connect/Disconnect
+	// StopListening when not connected should be no-op
+	err := mc.StopListening()
+	if err != nil {
+		t.Errorf("Expected nil error from StopListening, got %v", err)
+	}
+}
+
+func TestGetReconnectURL_CustomURL(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	url := mc.getReconnectURL(nil, "wss://my-custom-url")
+	if url != "wss://my-custom-url" {
+		t.Errorf("Expected custom URL, got %q", url)
+	}
+}
+
+func TestGetReconnectURL_DeviceProvider(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	provider := &mockDeviceProvider{wsURL: "wss://from-device"}
+	url := mc.getReconnectURL(provider, "")
+	if url != "wss://from-device" {
+		t.Errorf("Expected device provider URL, got %q", url)
+	}
+}
+
+func TestGetReconnectURL_Fallback(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	url := mc.getReconnectURL(nil, "")
+	if url != "wss://mercury-connection-a.wbx2.com/mercury/device" {
+		t.Errorf("Expected fallback URL, got %q", url)
+	}
+}
+
+func TestGetReconnectURL_CustomFallback(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	cfg := DefaultConfig()
+	cfg.FallbackWebSocketURL = "wss://custom-fallback"
+	mc := New(client, cfg)
+
+	url := mc.getReconnectURL(nil, "")
+	if url != "wss://custom-fallback" {
+		t.Errorf("Expected custom fallback URL, got %q", url)
+	}
+}
+
+func TestGetReconnectURL_DeviceProviderError(t *testing.T) {
+	client, _ := webexsdk.NewClient("test-token", nil)
+	mc := New(client, nil)
+
+	provider := &mockDeviceProvider{err: fmt.Errorf("register failed")}
+	url := mc.getReconnectURL(provider, "")
+	// When Register() fails, getReconnectURL returns empty string
+	if url != "" {
+		t.Errorf("Expected empty string on provider error, got %q", url)
+	}
 }
 
 // mockDeviceProvider implements DeviceProvider for testing

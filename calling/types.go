@@ -448,13 +448,23 @@ type Config struct {
 
 	// RequestTimeout overrides the default HTTP request timeout
 	RequestTimeout time.Duration
+
+	// WDMURL is the Webex Device Management service URL used for Mobius discovery.
+	// Default: https://wdm-a.wbx2.com/wdm/api/v1/devices
+	WDMURL string
+
+	// RegionDiscoveryURL is the URL for the Webex region discovery service.
+	// Default: https://ds.ciscospark.com/v1/region
+	RegionDiscoveryURL string
 }
 
 // DefaultConfig returns a Config with sensible defaults
 func DefaultConfig() *Config {
 	return &Config{
-		BaseURL:        "https://webexapis.com/v1",
-		RequestTimeout: 30 * time.Second,
+		BaseURL:            "https://webexapis.com/v1",
+		RequestTimeout:     30 * time.Second,
+		WDMURL:             "https://wdm-a.wbx2.com/wdm/api/v1/devices",
+		RegionDiscoveryURL: "https://ds.ciscospark.com/v1/region",
 	}
 }
 

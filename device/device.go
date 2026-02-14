@@ -37,6 +37,9 @@ type Config struct {
 	DefaultHeaders map[string]string
 	// DefaultBody to include in requests
 	DefaultBody map[string]interface{}
+	// WDMURL is the base URL for the Webex Device Management service.
+	// Default: https://wdm-a.wbx2.com/wdm/api/v1/devices
+	WDMURL string
 }
 
 // DefaultConfig returns the default configuration for the Device plugin
@@ -47,23 +50,26 @@ func DefaultConfig() *Config {
 		DeviceType:         "WEB",
 		DefaultHeaders:     make(map[string]string),
 		DefaultBody:        make(map[string]interface{}),
+		WDMURL:             "https://wdm-a.wbx2.com/wdm/api/v1/devices",
 	}
 }
 
-// DeviceDTO represents the response from the WDM service for a device
+// DeviceDTO represents the full device information returned by the WDM service.
+// It captures all fields from the registration response, including service host
+// mappings used for Mobius discovery and Mercury WebSocket URLs.
 type DeviceDTO struct {
-	URL                         string      `json:"url,omitempty"`
-	WebSocketURL                string      `json:"webSocketUrl,omitempty"`
-	UserID                      string      `json:"userId,omitempty"`
-	DeviceType                  string      `json:"deviceType,omitempty"`
-	IntranetInactivityDuration  int         `json:"intranetInactivityDuration,omitempty"`
-	InNetworkInactivityDuration int         `json:"inNetworkInactivityDuration,omitempty"`
-	ModificationTime            string      `json:"modificationTime,omitempty"`
-	Services                    interface{} `json:"services,omitempty"`
-	ServiceHostMap              interface{} `json:"serviceHostMap,omitempty"`
-	WebFileShareControl         string      `json:"webFileShareControl,omitempty"`
-	ClientMessagingGiphy        string      `json:"clientMessagingGiphy,omitempty"`
-	ETag                        string      `json:"-"`
+	URL                         string      `json:"url,omitempty"`                         // Device URL for refresh/unregister operations
+	WebSocketURL                string      `json:"webSocketUrl,omitempty"`                // Mercury WebSocket URL for real-time events
+	UserID                      string      `json:"userId,omitempty"`                      // Webex user ID associated with this device
+	DeviceType                  string      `json:"deviceType,omitempty"`                  // Device type (e.g., "TEAMS_SDK_JS")
+	IntranetInactivityDuration  int         `json:"intranetInactivityDuration,omitempty"`  // Intranet inactivity timeout in seconds
+	InNetworkInactivityDuration int         `json:"inNetworkInactivityDuration,omitempty"` // In-network inactivity timeout in seconds
+	ModificationTime            string      `json:"modificationTime,omitempty"`            // Last modification timestamp
+	Services                    interface{} `json:"services,omitempty"`                    // Service catalog (v1 format)
+	ServiceHostMap              interface{} `json:"serviceHostMap,omitempty"`              // Service host catalog including Mobius endpoints
+	WebFileShareControl         string      `json:"webFileShareControl,omitempty"`         // File sharing control setting
+	ClientMessagingGiphy        string      `json:"clientMessagingGiphy,omitempty"`        // Giphy messaging setting
+	ETag                        string      `json:"-"`                                     // HTTP ETag for conditional refresh requests
 }
 
 // Client is the Device API client
@@ -119,7 +125,11 @@ func (c *Client) Register() error {
 	}
 
 	// Create the request
-	req, err := http.NewRequest(http.MethodPost, "https://wdm-a.wbx2.com/wdm/api/v1/devices", bytes.NewBuffer(payloadBytes))
+	wdmURL := c.config.WDMURL
+	if wdmURL == "" {
+		wdmURL = "https://wdm-a.wbx2.com/wdm/api/v1/devices"
+	}
+	req, err := http.NewRequest(http.MethodPost, wdmURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("error creating request: %w", err)
 	}
@@ -136,9 +146,8 @@ func (c *Client) Register() error {
 	q.Add("includeUpstreamServices", "all")
 	req.URL.RawQuery = q.Encode()
 
-	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// Send the request using the SDK's configured HTTP client
+	resp, err := c.webexClient.GetHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}
@@ -207,9 +216,8 @@ func (c *Client) Unregister() error {
 	// Add headers
 	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
-	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// Send the request using the SDK's configured HTTP client
+	resp, err := c.webexClient.GetHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}
@@ -346,22 +354,29 @@ func (c *Client) Refresh() error {
 	etag := c.device.ETag
 	c.mu.Unlock()
 
-	// Prepare headers
-	headers := make(map[string]string)
+	// Build the refresh request using the full device URL directly
+	req, err := http.NewRequest(http.MethodPut, deviceURL, nil)
+	if err != nil {
+		return fmt.Errorf("error creating refresh request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
+	req.Header.Set("Content-Type", "application/json")
 	for k, v := range c.config.DefaultHeaders {
-		headers[k] = v
+		req.Header.Set(k, v)
 	}
 
 	// Add If-None-Match header if we have an ETag
 	if etag != "" {
-		headers["If-None-Match"] = etag
+		req.Header.Set("If-None-Match", etag)
 	}
 
-	// Make the refresh request
-	resp, err := c.webexClient.Request(http.MethodPut, deviceURL, nil, nil)
+	// Make the refresh request using the SDK's configured HTTP client
+	resp, err := c.webexClient.GetHTTPClient().Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("error sending refresh request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	// Check if there was no change (304 Not Modified)
 	if resp.StatusCode == http.StatusNotModified {
@@ -374,15 +389,25 @@ func (c *Client) Refresh() error {
 		return nil
 	}
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("refresh failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	// Parse the response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading refresh response: %w", err)
+	}
+
 	var deviceDTO DeviceDTO
-	if err := webexsdk.ParseResponse(resp, &deviceDTO); err != nil {
-		return err
+	if err := json.Unmarshal(respBody, &deviceDTO); err != nil {
+		return fmt.Errorf("error parsing refresh response: %w", err)
 	}
 
 	// Extract ETag from headers if present
-	if etag := resp.Header.Get("ETag"); etag != "" {
-		deviceDTO.ETag = etag
+	if newEtag := resp.Header.Get("ETag"); newEtag != "" {
+		deviceDTO.ETag = newEtag
 	}
 
 	// Update device data

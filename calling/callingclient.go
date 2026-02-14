@@ -230,7 +230,10 @@ type regionInfoResult struct {
 
 // getRegionInfo fetches the client's region from the Webex region discovery service
 func (cc *CallingClient) getRegionInfo() (*regionInfoResult, error) {
-	url := "https://ds.ciscospark.com/v1/region"
+	url := cc.config.RegionDiscoveryURL
+	if url == "" {
+		url = "https://ds.ciscospark.com/v1/region"
+	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -289,7 +292,11 @@ func (cc *CallingClient) registerWDMDevice() ([]string, error) {
 		return nil, fmt.Errorf("error marshaling WDM payload: %w", err)
 	}
 
-	wdmURL := "https://wdm-a.wbx2.com/wdm/api/v1/devices?includeUpstreamServices=all"
+	baseWDMURL := cc.config.WDMURL
+	if baseWDMURL == "" {
+		baseWDMURL = "https://wdm-a.wbx2.com/wdm/api/v1/devices"
+	}
+	wdmURL := baseWDMURL + "?includeUpstreamServices=all"
 	req, err := http.NewRequest(http.MethodPost, wdmURL, bytes.NewBuffer(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error creating WDM request: %w", err)
@@ -447,27 +454,7 @@ func (cc *CallingClient) registerWDMDevice() ([]string, error) {
 
 // contains checks if s contains substr (case-insensitive)
 func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		match := true
-		for j := 0; j < len(substr); j++ {
-			sc := s[i+j]
-			uc := substr[j]
-			if sc >= 'A' && sc <= 'Z' {
-				sc += 32
-			}
-			if uc >= 'A' && uc <= 'Z' {
-				uc += 32
-			}
-			if sc != uc {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // DeregisterAllDevices attempts to deregister all existing Mobius devices for this user.

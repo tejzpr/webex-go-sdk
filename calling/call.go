@@ -592,8 +592,6 @@ func (c *Call) handleRoapMessage(msg *RoapMessage) {
 
 	case RoapMessageOK:
 		// Media negotiation complete
-		c.mu.Lock()
-		c.mu.Unlock()
 		log.Printf("ROAP OK received, media negotiation complete for callId=%s", c.callID)
 
 	case RoapMessageOfferRequest:
