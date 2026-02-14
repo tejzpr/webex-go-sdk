@@ -347,7 +347,7 @@
       <div class="grid-2">
         <div class="field">
           <label>Destination Address</label>
-          <input type="text" id="callAddress" placeholder="+14085551234 or sip:user@example.com" />
+          <input type="text" id="callAddress" placeholder="+14085551234 (phone numbers only)" />
         </div>
         <div class="field">
           <label>Call Type</label>
@@ -846,7 +846,14 @@ async function startAudioBridge() {
     addLog('Starting audio bridge...', 'info');
 
     // Get microphone access
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false
+    });
     addLog('Microphone access granted.', 'success');
 
     // Create WebSocket to Go server

@@ -157,6 +157,17 @@ func (me *MediaEngine) OnICECandidate(handler func(candidate *webrtc.ICECandidat
 	me.onICECandidate = handler
 }
 
+// IsConnected returns true if the Mobius PeerConnection is in the connected state.
+func (me *MediaEngine) IsConnected() bool {
+	me.mu.Lock()
+	defer me.mu.Unlock()
+	if me.peerConnection == nil {
+		return false
+	}
+	s := me.peerConnection.ConnectionState()
+	return s == webrtc.PeerConnectionStateConnected
+}
+
 // AddAudioTrack adds a local audio track to the peer connection.
 // Uses PCMU codec since BroadWorks/Mobius consistently selects it.
 func (me *MediaEngine) AddAudioTrack() (*webrtc.TrackLocalStaticRTP, error) {

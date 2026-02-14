@@ -432,6 +432,9 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 			log.Println("Mercury: WARNING - no WDM WebSocket URL from calling, using default device")
 		}
 
+		// Clear all wildcard handlers to prevent duplicates on re-registration
+		merc.ClearHandlers("*")
+
 		// Register a wildcard handler to route Mobius events to CallingClient
 		merc.On("*", func(event *mercury.Event) {
 			if event == nil || event.Data == nil {
@@ -572,14 +575,14 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize address to match JS SDK behavior:
-	// - Phone numbers (digits, +, *, #) → type "uri", address "tel:<sanitized>"
-	// - SIP URIs (sip:...) → type "uri", address as-is
+	// Normalize address:
+	// - SIP URIs → pass through as-is (works for some BroadWorks destinations)
+	// - Phone numbers → sanitize and add tel: prefix (matching JS SDK behavior)
 	address := strings.TrimSpace(req.Address)
 	ct := calling.CallTypeURI
 
 	if strings.HasPrefix(address, "sip:") || strings.HasPrefix(address, "sips:") {
-		// SIP URI — pass through as-is
+		// SIP URI — pass through as-is, BroadWorks may or may not route it
 		log.Printf("Dial: using SIP URI as-is: %s", address)
 	} else if strings.HasPrefix(address, "tel:") {
 		// Already tel: formatted
@@ -588,7 +591,7 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 		// Assume phone number — sanitize and add tel: prefix (JS SDK behavior)
 		sanitized := sanitizePhoneNumber(address)
 		if sanitized == "" {
-			jsonError(w, http.StatusBadRequest, "Invalid phone number")
+			jsonError(w, http.StatusBadRequest, "Invalid phone number. Use E.164 format (e.g. +14085551234)")
 			return
 		}
 		address = "tel:" + sanitized
@@ -872,7 +875,12 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				mobiusLocalTrack := call.GetMedia().GetLocalTrack()
+				media := call.GetMedia()
+				if !media.IsConnected() {
+					continue // Wait for Mobius PC to finish ICE/DTLS handshake
+				}
+
+				mobiusLocalTrack := media.GetLocalTrack()
 				if mobiusLocalTrack == nil {
 					continue
 				}
@@ -916,73 +924,77 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Audio bridge: PC state=%s", s.String())
 	})
 
-	// Start relaying Mobius remote audio to browser.
-	// Send PCMU silence (0xFF) at 20ms intervals to keep the browser PC alive
-	// until the Mobius remote track becomes available, then relay real audio.
+	// Mobius→Browser relay: silence keepalive until real audio, then direct write.
+	// Key: write Mobius RTP directly to browserLocalTrack (no channel) to
+	// preserve packet timing and avoid jitter from buffering/interleaving.
 	stopRelay := make(chan struct{})
+	stopSilence := make(chan struct{})
+
+	// Silence keepalive goroutine — sends PCMU silence every 20ms until
+	// real Mobius audio arrives, then stops to avoid interleaving.
 	go func() {
-		// PCMU silence: 160 samples at 8kHz = 20ms, 0xFF = digital silence in µ-law
 		silenceBuf := make([]byte, 160)
 		for i := range silenceBuf {
 			silenceBuf[i] = 0xFF
 		}
-
-		var seq uint16
-		var ts uint32
-		const ssrc = 0xDEADBEEF
-		silenceTicker := time.NewTicker(20 * time.Millisecond)
-		defer silenceTicker.Stop()
-
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-stopRelay:
 				return
-			case <-silenceTicker.C:
-				// Check if Mobius remote track is available
+			case <-stopSilence:
+				return
+			case <-ticker.C:
+				if writeErr := browserLocalTrack.WriteRTP(&rtp.Packet{
+					Header:  rtp.Header{Version: 2, PayloadType: 0},
+					Payload: silenceBuf,
+				}); writeErr != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	// Relay goroutine: poll for Mobius remote track, then relay RTP directly.
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopRelay:
+				return
+			case <-ticker.C:
 				state.mu.RLock()
 				call := state.activeCall
 				state.mu.RUnlock()
-
-				if call != nil {
-					remoteTrack := call.GetMedia().GetRemoteTrack()
-					if remoteTrack != nil {
-						// Switch to real audio relay
-						silenceTicker.Stop()
-						log.Println("Audio bridge: starting Mobius→Browser relay")
-						buf := make([]byte, 1500)
-						for {
-							n, _, readErr := remoteTrack.Read(buf)
-							if readErr != nil {
-								log.Printf("Audio bridge: Mobius remote track read ended: %v", readErr)
-								return
-							}
-							pkt := &rtp.Packet{}
-							if err := pkt.Unmarshal(buf[:n]); err != nil {
-								continue
-							}
-							if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
-								log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
-								return
-							}
-						}
+				if call == nil {
+					continue
+				}
+				remoteTrack := call.GetMedia().GetRemoteTrack()
+				if remoteTrack == nil {
+					continue
+				}
+				ticker.Stop()
+				// Stop silence — real audio is about to flow
+				close(stopSilence)
+				log.Println("Audio bridge: starting Mobius→Browser relay")
+				buf := make([]byte, 1500)
+				for {
+					n, _, readErr := remoteTrack.Read(buf)
+					if readErr != nil {
+						log.Printf("Audio bridge: Mobius remote track read ended: %v", readErr)
+						return
 					}
-				}
-
-				// Send silence to keep browser PC alive
-				pkt := &rtp.Packet{
-					Header: rtp.Header{
-						Version:        2,
-						PayloadType:    0, // PCMU
-						SequenceNumber: seq,
-						Timestamp:      ts,
-						SSRC:           ssrc,
-					},
-					Payload: silenceBuf,
-				}
-				seq++
-				ts += 160
-				if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
-					return
+					pkt := &rtp.Packet{}
+					if err := pkt.Unmarshal(buf[:n]); err != nil {
+						continue
+					}
+					// Write directly — preserves original packet timing
+					if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
+						log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
+						return
+					}
 				}
 			}
 		}

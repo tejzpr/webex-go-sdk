@@ -234,6 +234,13 @@ func (c *Client) On(eventType string, handler EventHandler) {
 	c.mu.Unlock()
 }
 
+// ClearHandlers removes all handlers for a specific event type
+func (c *Client) ClearHandlers(eventType string) {
+	c.mu.Lock()
+	delete(c.eventHandlers, eventType)
+	c.mu.Unlock()
+}
+
 // Off removes an event handler for a specific event type
 func (c *Client) Off(eventType string, handler EventHandler) {
 	if handler == nil {
