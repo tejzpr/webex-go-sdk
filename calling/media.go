@@ -41,7 +41,11 @@ type MediaConfig struct {
 	AudioCodecs []string
 }
 
-// DefaultMediaConfig returns a MediaConfig with sensible defaults
+// DefaultMediaConfig returns a MediaConfig with sensible defaults.
+// STUN is required because the Go server is typically behind NAT and
+// BroadWorks (ice-lite) needs a public srflx candidate to reach us.
+// The JS SDK uses iceServers:[] because the browser handles NAT traversal
+// via ICE connectivity checks, but Pion needs an explicit public candidate.
 func DefaultMediaConfig() *MediaConfig {
 	return &MediaConfig{
 		ICEServers: []webrtc.ICEServer{
