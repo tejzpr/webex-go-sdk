@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -854,45 +855,80 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 	state.browserLocalTrack = browserLocalTrack
 	state.mu.Unlock()
 
-	// When browser sends audio (mic), relay to Mobius local track
+	// Channels to stop relay goroutines on disconnect
+	stopRelay := make(chan struct{})
+	stopSilence := make(chan struct{})
+
+	// When browser sends audio (mic), relay to Mobius local track.
+	// Uses ticker-paced writes: a reader goroutine stores the latest packet,
+	// and a 20ms ticker goroutine writes it to Mobius at a steady rate.
+	// This ensures BroadWorks receives packets with consistent 20ms spacing
+	// regardless of relay loop jitter.
+	var latestPkt atomic.Value // stores *rtp.Packet
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		log.Printf("Audio bridge: received browser track codec=%s", track.Codec().MimeType)
+		// Reader goroutine: read from browser track and store latest packet
 		go func() {
 			buf := make([]byte, 1500)
-			var pktCount int
 			for {
 				n, _, readErr := track.Read(buf)
 				if readErr != nil {
-					log.Printf("Audio bridge: browser track read ended: %v (relayed %d packets to Mobius)", readErr, pktCount)
+					log.Printf("Audio bridge: browser track read ended: %v", readErr)
 					return
 				}
-
-				state.mu.RLock()
-				call := state.activeCall
-				state.mu.RUnlock()
-
-				if call == nil {
-					continue
-				}
-
-				media := call.GetMedia()
-				if !media.IsConnected() {
-					continue // Wait for Mobius PC to finish ICE/DTLS handshake
-				}
-
-				mobiusLocalTrack := media.GetLocalTrack()
-				if mobiusLocalTrack == nil {
-					continue
-				}
-
-				// Parse RTP and write to Mobius local track
 				pkt := &rtp.Packet{}
 				if err := pkt.Unmarshal(buf[:n]); err != nil {
 					continue
 				}
+				latestPkt.Store(pkt)
+			}
+		}()
+	})
+
+	// Ticker-paced writer: sends latest browser packet to Mobius every 20ms
+	go func() {
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		var pktCount int
+		var mobiusLocalTrack *webrtc.TrackLocalStaticRTP
+		var connectedCh <-chan struct{}
+		for {
+			select {
+			case <-stopRelay:
+				log.Printf("Audio bridge: browser→Mobius relay stopped (relayed %d packets)", pktCount)
+				return
+			case <-ticker.C:
+				// Phase 1: wait for call and local track
+				if mobiusLocalTrack == nil {
+					state.mu.RLock()
+					call := state.activeCall
+					state.mu.RUnlock()
+					if call == nil {
+						continue
+					}
+					mobiusLocalTrack = call.GetMedia().GetLocalTrack()
+					if mobiusLocalTrack == nil {
+						continue
+					}
+					connectedCh = call.GetMedia().ConnectedCh()
+				}
+
+				// Phase 2: wait for Mobius PC to be connected
+				select {
+				case <-connectedCh:
+				default:
+					continue
+				}
+
+				// Phase 3: write latest packet at steady 20ms rate
+				val := latestPkt.Load()
+				if val == nil {
+					continue
+				}
+				pkt := val.(*rtp.Packet)
 				if writeErr := mobiusLocalTrack.WriteRTP(pkt); writeErr != nil {
-					if pktCount == 0 {
-						log.Printf("Audio bridge: first write to mobius failed: %v", writeErr)
+					if pktCount == 0 || pktCount%500 == 0 {
+						log.Printf("Audio bridge: write to mobius failed (pkt %d): %v", pktCount, writeErr)
 					}
 				} else {
 					pktCount++
@@ -903,8 +939,8 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-		}()
-	})
+		}
+	}()
 
 	// Send ICE candidates to browser
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
@@ -920,15 +956,14 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		conn.WriteMessage(websocket.TextMessage, msgBytes)
 	})
 
+	bridgeID := time.Now().UnixMilli() % 10000
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		log.Printf("Audio bridge: PC state=%s", s.String())
+		log.Printf("Audio bridge [%d]: PC state=%s", bridgeID, s.String())
 	})
 
 	// Mobius→Browser relay: silence keepalive until real audio, then direct write.
 	// Key: write Mobius RTP directly to browserLocalTrack (no channel) to
 	// preserve packet timing and avoid jitter from buffering/interleaving.
-	stopRelay := make(chan struct{})
-	stopSilence := make(chan struct{})
 
 	// Silence keepalive goroutine — sends PCMU silence every 20ms until
 	// real Mobius audio arrives, then stops to avoid interleaving.
@@ -937,8 +972,11 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		for i := range silenceBuf {
 			silenceBuf[i] = 0xFF
 		}
+		var seq uint16
+		var ts uint32
 		ticker := time.NewTicker(20 * time.Millisecond)
 		defer ticker.Stop()
+		var silenceCount int
 		for {
 			select {
 			case <-stopRelay:
@@ -946,11 +984,24 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 			case <-stopSilence:
 				return
 			case <-ticker.C:
+				seq++
+				ts += 160 // 160 samples = 20ms at 8kHz
 				if writeErr := browserLocalTrack.WriteRTP(&rtp.Packet{
-					Header:  rtp.Header{Version: 2, PayloadType: 0},
+					Header: rtp.Header{
+						Version:        2,
+						PayloadType:    0,
+						SequenceNumber: seq,
+						Timestamp:      ts,
+						Marker:         seq == 1, // Mark first packet
+					},
 					Payload: silenceBuf,
 				}); writeErr != nil {
+					log.Printf("Audio bridge: silence write error: %v (after %d packets)", writeErr, silenceCount)
 					return
+				}
+				silenceCount++
+				if silenceCount == 1 {
+					log.Println("Audio bridge: silence keepalive started")
 				}
 			}
 		}

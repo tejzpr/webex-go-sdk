@@ -31,6 +31,7 @@ type MediaEngine struct {
 	onRemoteTrack  func(track *webrtc.TrackRemote)
 	onICECandidate func(candidate *webrtc.ICECandidate)
 	api            *webrtc.API
+	connectedCh    chan struct{} // closed when PC reaches connected state
 }
 
 // MediaConfig holds configuration for the media engine
@@ -111,6 +112,7 @@ func NewMediaEngine(config *MediaConfig) (*MediaEngine, error) {
 	engine := &MediaEngine{
 		peerConnection: pc,
 		api:            api,
+		connectedCh:    make(chan struct{}),
 	}
 
 	// Set up ICE candidate handler
@@ -123,9 +125,18 @@ func NewMediaEngine(config *MediaConfig) (*MediaEngine, error) {
 		}
 	})
 
-	// Log connection state changes for debugging
+	// Log connection state changes and signal when connected
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		log.Printf("Mobius PC: connection state → %s", s.String())
+		if s == webrtc.PeerConnectionStateConnected {
+			engine.mu.Lock()
+			select {
+			case <-engine.connectedCh:
+			default:
+				close(engine.connectedCh)
+			}
+			engine.mu.Unlock()
+		}
 	})
 	pc.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
 		log.Printf("Mobius PC: ICE connection state → %s", s.String())
@@ -170,6 +181,11 @@ func (me *MediaEngine) IsConnected() bool {
 	}
 	s := me.peerConnection.ConnectionState()
 	return s == webrtc.PeerConnectionStateConnected
+}
+
+// ConnectedCh returns a channel that is closed when the Mobius PC reaches connected state.
+func (me *MediaEngine) ConnectedCh() <-chan struct{} {
+	return me.connectedCh
 }
 
 // AddAudioTrack adds a local audio track to the peer connection.
