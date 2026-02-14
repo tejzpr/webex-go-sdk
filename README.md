@@ -17,6 +17,7 @@ A comprehensive, lightweight Go SDK for Cisco Webex API
 
 - ✅ All REST APIs are fully implemented and working
 - ✅ WebSocket APIs with end-to-end encrypted message decryption
+- ✅ Real-time Webex Calling with WebRTC media (Mobius/BroadWorks)
 
 ## Installation
 
@@ -76,6 +77,7 @@ func main() {
 - **Room Tabs** - Manage tabs in Webex rooms
 - **Meetings** - Create, list, update, and delete Webex meetings
 - **Meeting Transcripts** - List, download, and manage meeting transcripts and snippets
+- **Calling** - Call history, call settings (DND, call waiting, call forwarding, voicemail), contacts
 
 ### WebSocket APIs
 
@@ -83,9 +85,19 @@ func main() {
 - **Conversation Events** - Listen for messages, shares, and acknowledgements
 - **End-to-End Encryption** - Full JWE decryption using KMS (ECDH key exchange + AES-256-GCM)
 
+### Real-Time Call Control (Webex Calling)
+
+- **CallingClient** - Line registration with Mobius, call lifecycle management, Mercury event routing
+- **AudioBridge** - Browser-facing WebRTC PeerConnection with bidirectional RTP relay (PCMU/PCMA)
+- **Call Control** - Dial, answer, hold, resume, transfer (blind/consult), DTMF, mute/unmute
+- **SignalingTransport** - Transport-agnostic WebRTC signaling interface (WebSocket, gRPC, etc.)
+- **Address Normalization** - Phone number sanitization and SIP/tel URI handling
+
 ## Examples
 
 See the [examples](./examples) directory.
+
+- [Calling Example](./examples/calling) - Web-based call control with browser audio bridge
 
 ### Sending a Message
 

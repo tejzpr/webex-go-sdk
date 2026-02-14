@@ -25,20 +25,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/pion/interceptor"
-	"github.com/pion/rtp"
-	"github.com/pion/webrtc/v4"
 
 	webex "github.com/tejzpr/webex-go-sdk/v2"
 	"github.com/tejzpr/webex-go-sdk/v2/calling"
-	"github.com/tejzpr/webex-go-sdk/v2/mercury"
 )
 
 //go:embed static/*
@@ -46,18 +40,13 @@ var staticFiles embed.FS
 
 // appState holds the server-side state
 type appState struct {
-	mu               sync.RWMutex
-	client           *webex.WebexClient
-	callingClient    *calling.CallingClient
-	line             *calling.Line
-	activeCall       *calling.Call
-	accessToken      string
-	mercuryClient    *mercury.Client
-	mercuryConnected bool
-
-	// Audio bridge: browser-side Pion PeerConnection
-	browserPC         *webrtc.PeerConnection
-	browserLocalTrack *webrtc.TrackLocalStaticRTP
+	mu            sync.RWMutex
+	client        *webex.WebexClient
+	callingClient *calling.CallingClient
+	line          *calling.Line
+	activeCall    *calling.Call
+	accessToken   string
+	activeWSConn  *websocket.Conn // audio bridge WS, closed on shutdown
 }
 
 var state = &appState{}
@@ -112,8 +101,11 @@ func main() {
 		sig := <-sigCh
 		log.Printf("Received %v, shutting down...", sig)
 
-		// Auto-deregister all lines and devices
+		// Close the audio bridge WebSocket so HandleSignaling unblocks
 		state.mu.Lock()
+		if state.activeWSConn != nil {
+			state.activeWSConn.Close()
+		}
 		if state.callingClient != nil {
 			log.Println("Auto-deregistering calling client...")
 			state.callingClient.Shutdown()
@@ -126,6 +118,11 @@ func main() {
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("HTTP server shutdown error: %v", err)
 		}
+
+		// Force exit if goroutines are still hanging
+		time.Sleep(2 * time.Second)
+		log.Println("Force exiting.")
+		os.Exit(0)
 	}()
 
 	log.Printf("Webex Calling Example running at http://localhost%s", addr)
@@ -418,61 +415,11 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 	state.mu.Unlock()
 
 	// Connect Mercury WebSocket for Mobius call events (ROAP answers, call progress, etc.)
-	// IMPORTANT: Use the WDM WebSocket URL from CallingClient so Mercury connects
-	// to the same device that Mobius registered with. Otherwise Mobius events go
-	// to a different device and never reach Mercury.
+	// The SDK handles WDM URL wiring, event filtering, and routing internally.
 	go func() {
-		merc := client.Mercury()
-
-		// Use the same WDM device's WebSocket URL that was used for Mobius registration
-		wsURL := cc.GetWDMWebSocketURL()
-		if wsURL != "" {
-			log.Printf("Mercury: using WDM WebSocket URL from calling registration: %s", wsURL)
-			merc.SetCustomWebSocketURL(wsURL)
-		} else {
-			log.Println("Mercury: WARNING - no WDM WebSocket URL from calling, using default device")
-		}
-
-		// Clear all wildcard handlers to prevent duplicates on re-registration
-		merc.ClearHandlers("*")
-
-		// Register a wildcard handler to route Mobius events to CallingClient
-		merc.On("*", func(event *mercury.Event) {
-			if event == nil || event.Data == nil {
-				return
-			}
-			// Log ALL events for debugging
-			eventType, _ := event.Data["eventType"].(string)
-			log.Printf("Mercury event received: eventType=%s id=%s", eventType, event.ID)
-			// Check if this is a Mobius call event
-			if strings.HasPrefix(eventType, "mobius.") {
-				log.Printf("Mercury: received Mobius event: %s", eventType)
-				// Re-marshal the event data as a MobiusCallEvent for HandleMercuryEvent
-				eventBytes, err := json.Marshal(event)
-				if err != nil {
-					log.Printf("Mercury: failed to marshal event: %v", err)
-					return
-				}
-				state.mu.RLock()
-				callingCl := state.callingClient
-				state.mu.RUnlock()
-				if callingCl != nil {
-					callingCl.HandleMercuryEvent(eventBytes)
-				}
-			}
-		})
-
-		log.Println("Connecting Mercury WebSocket...")
-		if err := merc.Connect(); err != nil {
+		if err := cc.ConnectMercury(client.Mercury()); err != nil {
 			log.Printf("Mercury connection failed: %v", err)
-			return
 		}
-		log.Println("Mercury WebSocket connected!")
-
-		state.mu.Lock()
-		state.mercuryClient = merc
-		state.mercuryConnected = true
-		state.mu.Unlock()
 	}()
 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
@@ -489,11 +436,6 @@ func handleDeregister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	state.mu.Lock()
-	if state.mercuryClient != nil {
-		state.mercuryClient.Disconnect()
-		state.mercuryClient = nil
-		state.mercuryConnected = false
-	}
 	if state.callingClient != nil {
 		state.callingClient.Shutdown()
 	}
@@ -576,28 +518,12 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize address:
-	// - SIP URIs → pass through as-is (works for some BroadWorks destinations)
-	// - Phone numbers → sanitize and add tel: prefix (matching JS SDK behavior)
-	address := strings.TrimSpace(req.Address)
-	ct := calling.CallTypeURI
-
-	if strings.HasPrefix(address, "sip:") || strings.HasPrefix(address, "sips:") {
-		// SIP URI — pass through as-is, BroadWorks may or may not route it
-		log.Printf("Dial: using SIP URI as-is: %s", address)
-	} else if strings.HasPrefix(address, "tel:") {
-		// Already tel: formatted
-		log.Printf("Dial: using tel URI as-is: %s", address)
-	} else {
-		// Assume phone number — sanitize and add tel: prefix (JS SDK behavior)
-		sanitized := sanitizePhoneNumber(address)
-		if sanitized == "" {
-			jsonError(w, http.StatusBadRequest, "Invalid phone number. Use E.164 format (e.g. +14085551234)")
-			return
-		}
-		address = "tel:" + sanitized
-		log.Printf("Dial: normalized phone number to: %s", address)
+	address, ct, err := calling.NormalizeAddress(req.Address)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("Invalid address: %v", err))
+		return
 	}
+	log.Printf("Dial: normalized address=%s type=%s", address, ct)
 
 	call, err := cc.MakeCall(line, &calling.CallDetails{
 		Type:    ct,
@@ -613,6 +539,7 @@ func handleDial(w http.ResponseWriter, r *http.Request) {
 	state.mu.Unlock()
 
 	// Clear activeCall when remote party disconnects
+	// (AudioBridge detach is handled automatically by CallingClient)
 	call.Emitter.On(string(calling.CallEventDisconnect), func(d interface{}) {
 		log.Printf("Call disconnected by remote party, clearing activeCall")
 		state.mu.Lock()
@@ -777,9 +704,18 @@ var wsUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// handleAudioWS creates a browser-side Pion PeerConnection, exchanges SDP/ICE
-// with the browser over WebSocket, and relays RTP packets between the Mobius
-// PeerConnection and the browser PeerConnection.
+// wsTransport adapts gorilla/websocket to calling.SignalingTransport.
+type wsTransport struct{ conn *websocket.Conn }
+
+func (t *wsTransport) ReadMessage() ([]byte, error) {
+	_, data, err := t.conn.ReadMessage()
+	return data, err
+}
+func (t *wsTransport) WriteMessage(data []byte) error {
+	return t.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+// handleAudioWS creates an AudioBridge and delegates signaling to the SDK.
 func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -789,342 +725,38 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	log.Println("Audio WebSocket connected")
 
-	// Create a MediaEngine with only PCMU/PCMA so the browser is forced to
-	// negotiate the same codec Mobius uses (PCMU). This allows direct RTP relay.
-	m := &webrtc.MediaEngine{}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:  webrtc.MimeTypePCMU,
-			ClockRate: 8000,
-			Channels:  1,
-		},
-		PayloadType: 0,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		log.Printf("Audio bridge: failed to register PCMU: %v", err)
-		return
-	}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{
-			MimeType:  webrtc.MimeTypePCMA,
-			ClockRate: 8000,
-			Channels:  1,
-		},
-		PayloadType: 8,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		log.Printf("Audio bridge: failed to register PCMA: %v", err)
-		return
-	}
-
-	// Register default interceptors (RTCP reports, SRTP) — required for
-	// the browser bridge PC to keep the DTLS/SRTP session alive.
-	i := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
-		log.Printf("Audio bridge: failed to register interceptors: %v", err)
-		return
-	}
-
-	api := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i))
-	pc, err := api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{URLs: []string{"stun:stun.l.google.com:19302"}},
-		},
-	})
-	if err != nil {
-		log.Printf("Audio bridge: failed to create PC: %v", err)
-		return
-	}
-	defer pc.Close()
-
-	// Create a local audio track with PCMU (to send Mobius remote audio to browser)
-	browserLocalTrack, err := webrtc.NewTrackLocalStaticRTP(
-		webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU},
-		"audio-from-mobius",
-		"webex-bridge",
-	)
-	if err != nil {
-		log.Printf("Audio bridge: failed to create local track: %v", err)
-		return
-	}
-	if _, err := pc.AddTrack(browserLocalTrack); err != nil {
-		log.Printf("Audio bridge: failed to add track: %v", err)
-		return
-	}
-
 	state.mu.Lock()
-	state.browserPC = pc
-	state.browserLocalTrack = browserLocalTrack
+	state.activeWSConn = conn
 	state.mu.Unlock()
-
-	// Channels to stop relay goroutines on disconnect
-	stopRelay := make(chan struct{})
-	stopSilence := make(chan struct{})
-
-	// When browser sends audio (mic), relay to Mobius local track.
-	// Uses ticker-paced writes: a reader goroutine stores the latest packet,
-	// and a 20ms ticker goroutine writes it to Mobius at a steady rate.
-	// This ensures BroadWorks receives packets with consistent 20ms spacing
-	// regardless of relay loop jitter.
-	var latestPkt atomic.Value // stores *rtp.Packet
-	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		log.Printf("Audio bridge: received browser track codec=%s", track.Codec().MimeType)
-		// Reader goroutine: read from browser track and store latest packet
-		go func() {
-			buf := make([]byte, 1500)
-			for {
-				n, _, readErr := track.Read(buf)
-				if readErr != nil {
-					log.Printf("Audio bridge: browser track read ended: %v", readErr)
-					return
-				}
-				pkt := &rtp.Packet{}
-				if err := pkt.Unmarshal(buf[:n]); err != nil {
-					continue
-				}
-				latestPkt.Store(pkt)
-			}
-		}()
-	})
-
-	// Ticker-paced writer: sends latest browser packet to Mobius every 20ms
-	go func() {
-		ticker := time.NewTicker(20 * time.Millisecond)
-		defer ticker.Stop()
-		var pktCount int
-		var mobiusLocalTrack *webrtc.TrackLocalStaticRTP
-		var connectedCh <-chan struct{}
-		for {
-			select {
-			case <-stopRelay:
-				log.Printf("Audio bridge: browser→Mobius relay stopped (relayed %d packets)", pktCount)
-				return
-			case <-ticker.C:
-				// Phase 1: wait for call and local track
-				if mobiusLocalTrack == nil {
-					state.mu.RLock()
-					call := state.activeCall
-					state.mu.RUnlock()
-					if call == nil {
-						continue
-					}
-					mobiusLocalTrack = call.GetMedia().GetLocalTrack()
-					if mobiusLocalTrack == nil {
-						continue
-					}
-					connectedCh = call.GetMedia().ConnectedCh()
-				}
-
-				// Phase 2: wait for Mobius PC to be connected
-				select {
-				case <-connectedCh:
-				default:
-					continue
-				}
-
-				// Phase 3: write latest packet at steady 20ms rate
-				val := latestPkt.Load()
-				if val == nil {
-					continue
-				}
-				pkt := val.(*rtp.Packet)
-				if writeErr := mobiusLocalTrack.WriteRTP(pkt); writeErr != nil {
-					if pktCount == 0 || pktCount%500 == 0 {
-						log.Printf("Audio bridge: write to mobius failed (pkt %d): %v", pktCount, writeErr)
-					}
-				} else {
-					pktCount++
-					if pktCount == 1 {
-						log.Printf("Audio bridge: first RTP packet relayed browser→Mobius (pt=%d ssrc=%d)", pkt.PayloadType, pkt.SSRC)
-					} else if pktCount%500 == 0 {
-						log.Printf("Audio bridge: relayed %d packets browser→Mobius", pktCount)
-					}
-				}
-			}
-		}
+	defer func() {
+		state.mu.Lock()
+		state.activeWSConn = nil
+		state.mu.Unlock()
 	}()
 
-	// Send ICE candidates to browser
-	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
-		if c == nil {
-			return
-		}
-		candidateJSON, _ := json.Marshal(c.ToJSON())
-		msg := map[string]interface{}{
-			"type":      "ice-candidate",
-			"candidate": json.RawMessage(candidateJSON),
-		}
-		msgBytes, _ := json.Marshal(msg)
-		conn.WriteMessage(websocket.TextMessage, msgBytes)
-	})
+	bridge, err := calling.NewAudioBridge(nil)
+	if err != nil {
+		log.Printf("Audio bridge: failed to create: %v", err)
+		return
+	}
+	defer bridge.Close()
 
-	bridgeID := time.Now().UnixMilli() % 10000
-	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-		log.Printf("Audio bridge [%d]: PC state=%s", bridgeID, s.String())
-	})
-
-	// Mobius→Browser relay: silence keepalive until real audio, then direct write.
-	// Key: write Mobius RTP directly to browserLocalTrack (no channel) to
-	// preserve packet timing and avoid jitter from buffering/interleaving.
-
-	// Silence keepalive goroutine — sends PCMU silence every 20ms until
-	// real Mobius audio arrives, then stops to avoid interleaving.
-	go func() {
-		silenceBuf := make([]byte, 160)
-		for i := range silenceBuf {
-			silenceBuf[i] = 0xFF
-		}
-		var seq uint16
-		var ts uint32
-		ticker := time.NewTicker(20 * time.Millisecond)
-		defer ticker.Stop()
-		var silenceCount int
-		for {
-			select {
-			case <-stopRelay:
-				return
-			case <-stopSilence:
-				return
-			case <-ticker.C:
-				seq++
-				ts += 160 // 160 samples = 20ms at 8kHz
-				if writeErr := browserLocalTrack.WriteRTP(&rtp.Packet{
-					Header: rtp.Header{
-						Version:        2,
-						PayloadType:    0,
-						SequenceNumber: seq,
-						Timestamp:      ts,
-						Marker:         seq == 1, // Mark first packet
-					},
-					Payload: silenceBuf,
-				}); writeErr != nil {
-					log.Printf("Audio bridge: silence write error: %v (after %d packets)", writeErr, silenceCount)
-					return
-				}
-				silenceCount++
-				if silenceCount == 1 {
-					log.Println("Audio bridge: silence keepalive started")
-				}
-			}
-		}
-	}()
-
-	// Relay goroutine: poll for Mobius remote track, then relay RTP directly.
-	go func() {
-		ticker := time.NewTicker(200 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stopRelay:
-				return
-			case <-ticker.C:
-				state.mu.RLock()
-				call := state.activeCall
-				state.mu.RUnlock()
-				if call == nil {
-					continue
-				}
-				remoteTrack := call.GetMedia().GetRemoteTrack()
-				if remoteTrack == nil {
-					continue
-				}
-				ticker.Stop()
-				log.Println("Audio bridge: starting Mobius→Browser relay")
-				silenceStopped := false
-				buf := make([]byte, 1500)
-				for {
-					n, _, readErr := remoteTrack.Read(buf)
-					if readErr != nil {
-						log.Printf("Audio bridge: Mobius remote track read ended: %v", readErr)
-						return
-					}
-					pkt := &rtp.Packet{}
-					if err := pkt.Unmarshal(buf[:n]); err != nil {
-						continue
-					}
-					// Write directly — preserves original packet timing
-					if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
-						log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
-						return
-					}
-					// Stop silence only after first real packet is written
-					if !silenceStopped {
-						close(stopSilence)
-						silenceStopped = true
-						log.Println("Audio bridge: silence keepalive stopped, real audio flowing")
-					}
-				}
-			}
-		}
-	}()
-
-	// Read signaling messages from browser
-	for {
-		_, msgBytes, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("Audio WS read error: %v", err)
-			break
-		}
-
-		var msg struct {
-			Type      string          `json:"type"`
-			SDP       string          `json:"sdp"`
-			Candidate json.RawMessage `json:"candidate"`
-		}
-		if err := json.Unmarshal(msgBytes, &msg); err != nil {
-			log.Printf("Audio WS: invalid message: %v", err)
-			continue
-		}
-
-		switch msg.Type {
-		case "offer":
-			log.Println("Audio bridge: received browser SDP offer")
-			if err := pc.SetRemoteDescription(webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  msg.SDP,
-			}); err != nil {
-				log.Printf("Audio bridge: set remote desc failed: %v", err)
-				continue
-			}
-
-			answer, err := pc.CreateAnswer(nil)
-			if err != nil {
-				log.Printf("Audio bridge: create answer failed: %v", err)
-				continue
-			}
-			if err := pc.SetLocalDescription(answer); err != nil {
-				log.Printf("Audio bridge: set local desc failed: %v", err)
-				continue
-			}
-
-			// Wait for ICE gathering
-			gatherComplete := webrtc.GatheringCompletePromise(pc)
-			<-gatherComplete
-
-			localDesc := pc.LocalDescription()
-			resp := map[string]string{
-				"type": "answer",
-				"sdp":  localDesc.SDP,
-			}
-			respBytes, _ := json.Marshal(resp)
-			conn.WriteMessage(websocket.TextMessage, respBytes)
-			log.Println("Audio bridge: sent SDP answer to browser")
-
-		case "ice-candidate":
-			var candidate webrtc.ICECandidateInit
-			if err := json.Unmarshal(msg.Candidate, &candidate); err != nil {
-				log.Printf("Audio bridge: invalid ICE candidate: %v", err)
-				continue
-			}
-			if err := pc.AddICECandidate(candidate); err != nil {
-				log.Printf("Audio bridge: add ICE candidate failed: %v", err)
-			}
-		}
+	// Register bridge with CallingClient for automatic call↔bridge binding
+	state.mu.RLock()
+	cc := state.callingClient
+	state.mu.RUnlock()
+	if cc != nil {
+		cc.SetAudioBridge(bridge)
 	}
 
-	close(stopRelay)
-	state.mu.Lock()
-	state.browserPC = nil
-	state.browserLocalTrack = nil
-	state.mu.Unlock()
+	// Blocks until the WebSocket closes
+	if err := bridge.HandleSignaling(&wsTransport{conn: conn}); err != nil {
+		log.Printf("Audio bridge signaling ended: %v", err)
+	}
+
+	if cc != nil {
+		cc.ClearAudioBridge()
+	}
 	log.Println("Audio WebSocket disconnected")
 }
 
@@ -1164,18 +796,4 @@ func handleTransfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, map[string]string{"status": "transferred"})
-}
-
-// sanitizePhoneNumber strips non-phone characters from a string,
-// matching the JS SDK's VALID_PHONE_REGEX /[\d\s()*#+.-]+/ behavior.
-// Returns the sanitized number or empty string if invalid.
-func sanitizePhoneNumber(input string) string {
-	var b strings.Builder
-	for _, r := range input {
-		if (r >= '0' && r <= '9') || r == '+' || r == '*' || r == '#' {
-			b.WriteRune(r)
-		}
-		// Skip spaces, parens, dots, dashes (JS SDK strips these)
-	}
-	return b.String()
 }

@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/tejzpr/webex-go-sdk/v2/mercury"
 	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
 )
 
@@ -50,6 +51,12 @@ type CallingClient struct {
 
 	// Media config
 	mediaConfig *MediaConfig
+
+	// Mercury client for Mobius event delivery
+	mercuryClient *mercury.Client
+
+	// Audio bridge for automatic call↔bridge binding
+	audioBridge *AudioBridge
 
 	// Events
 	Emitter *EventEmitter
@@ -671,11 +678,23 @@ func (cc *CallingClient) MakeCall(line *Line, destination *CallDetails) (*Call, 
 		return nil, fmt.Errorf("failed to dial: %w", err)
 	}
 
-	// Listen for disconnect to clean up
+	// Auto-attach AudioBridge if one is registered
+	cc.mu.RLock()
+	bridge := cc.audioBridge
+	cc.mu.RUnlock()
+	if bridge != nil {
+		bridge.AttachCall(call)
+	}
+
+	// Listen for disconnect to clean up call and detach bridge
 	call.Emitter.On(string(CallEventDisconnect), func(data interface{}) {
 		cc.mu.Lock()
 		delete(cc.activeCalls, call.GetCorrelationID())
+		ab := cc.audioBridge
 		cc.mu.Unlock()
+		if ab != nil {
+			ab.DetachCall()
+		}
 	})
 
 	return call, nil
@@ -699,6 +718,102 @@ func (cc *CallingClient) GetWDMWebSocketURL() string {
 	cc.mu.RLock()
 	defer cc.mu.RUnlock()
 	return cc.wdmWebSocketURL
+}
+
+// ConnectMercury connects a Mercury WebSocket client and wires it to receive
+// Mobius call events (ROAP answers, call progress, etc.). It uses the WDM
+// WebSocket URL from line registration so events arrive on the correct device.
+//
+// This is the idiomatic way to set up Mercury for calling — replaces the
+// manual wildcard handler + event routing that consumers previously had to do.
+func (cc *CallingClient) ConnectMercury(merc *mercury.Client) error {
+	// Use the same WDM device's WebSocket URL that was used for Mobius registration
+	wsURL := cc.GetWDMWebSocketURL()
+	if wsURL != "" {
+		log.Printf("CallingClient: Mercury using WDM WebSocket URL: %s", wsURL)
+		merc.SetCustomWebSocketURL(wsURL)
+	} else {
+		log.Println("CallingClient: WARNING - no WDM WebSocket URL, Mercury using default device")
+	}
+
+	// Clear existing wildcard handlers to prevent duplicates on re-registration
+	merc.ClearHandlers("*")
+
+	// Register a wildcard handler to route Mobius events to this CallingClient
+	merc.On("*", func(event *mercury.Event) {
+		if event == nil || event.Data == nil {
+			return
+		}
+		eventType, _ := event.Data["eventType"].(string)
+		log.Printf("CallingClient: Mercury event: eventType=%s id=%s", eventType, event.ID)
+		if strings.HasPrefix(eventType, "mobius.") {
+			log.Printf("CallingClient: routing Mobius event: %s", eventType)
+			eventBytes, err := json.Marshal(event)
+			if err != nil {
+				log.Printf("CallingClient: failed to marshal Mercury event: %v", err)
+				return
+			}
+			cc.HandleMercuryEvent(eventBytes)
+		}
+	})
+
+	log.Println("CallingClient: connecting Mercury WebSocket...")
+	if err := merc.Connect(); err != nil {
+		return fmt.Errorf("Mercury connection failed: %w", err)
+	}
+	log.Println("CallingClient: Mercury WebSocket connected")
+
+	cc.mu.Lock()
+	cc.mercuryClient = merc
+	cc.mu.Unlock()
+
+	return nil
+}
+
+// DisconnectMercury disconnects the Mercury WebSocket client if connected.
+func (cc *CallingClient) DisconnectMercury() {
+	cc.mu.Lock()
+	merc := cc.mercuryClient
+	cc.mercuryClient = nil
+	cc.mu.Unlock()
+
+	if merc != nil {
+		merc.Disconnect()
+		log.Println("CallingClient: Mercury disconnected")
+	}
+}
+
+// IsMercuryConnected returns whether the Mercury client is connected.
+func (cc *CallingClient) IsMercuryConnected() bool {
+	cc.mu.RLock()
+	merc := cc.mercuryClient
+	cc.mu.RUnlock()
+	return merc != nil && merc.IsConnected()
+}
+
+// SetAudioBridge registers an AudioBridge with this CallingClient. When set,
+// MakeCall() will automatically attach the bridge to new calls and detach it
+// when calls disconnect. This eliminates manual bridge↔call wiring.
+func (cc *CallingClient) SetAudioBridge(bridge *AudioBridge) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.audioBridge = bridge
+	log.Println("CallingClient: audio bridge set")
+}
+
+// ClearAudioBridge removes the AudioBridge from this CallingClient.
+func (cc *CallingClient) ClearAudioBridge() {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	cc.audioBridge = nil
+	log.Println("CallingClient: audio bridge cleared")
+}
+
+// GetAudioBridge returns the currently registered AudioBridge, or nil.
+func (cc *CallingClient) GetAudioBridge() *AudioBridge {
+	cc.mu.RLock()
+	defer cc.mu.RUnlock()
+	return cc.audioBridge
 }
 
 // GetConnectedCall returns the currently connected (not held) call, if any
@@ -821,8 +936,12 @@ func (cc *CallingClient) handleIncomingCall(event *MobiusCallEvent) {
 	cc.Emitter.Emit(string(LineEventIncomingCall), call)
 }
 
-// Shutdown deregisters all lines and cleans up resources
+// Shutdown deregisters all lines, disconnects Mercury, and cleans up resources
 func (cc *CallingClient) Shutdown() error {
+	// Disconnect Mercury first so no new events arrive during teardown
+	cc.DisconnectMercury()
+	cc.ClearAudioBridge()
+
 	cc.mu.Lock()
 	calls := make([]*Call, 0, len(cc.activeCalls))
 	for _, call := range cc.activeCalls {

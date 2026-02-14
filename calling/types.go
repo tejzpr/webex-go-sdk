@@ -6,7 +6,11 @@
 
 package calling
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // ---- Enums / Constants ----
 
@@ -452,4 +456,44 @@ func DefaultConfig() *Config {
 		BaseURL:        "https://webexapis.com/v1",
 		RequestTimeout: 30 * time.Second,
 	}
+}
+
+// NormalizeAddress normalizes a dial address for Mobius/BroadWorks:
+//   - SIP URIs (sip:/sips:) → passed through as-is with CallTypeURI
+//   - tel: URIs → passed through as-is with CallTypeURI
+//   - Phone numbers → sanitized and prefixed with "tel:" with CallTypeURI
+//
+// Returns the normalized address, call type, and an error if the input is invalid.
+// Matches the JS SDK's VALID_PHONE_REGEX /[\d\s()*#+.-]+/ behavior.
+func NormalizeAddress(input string) (address string, callType CallType, err error) {
+	address = strings.TrimSpace(input)
+	callType = CallTypeURI
+
+	if strings.HasPrefix(address, "sip:") || strings.HasPrefix(address, "sips:") {
+		return address, callType, nil
+	}
+	if strings.HasPrefix(address, "tel:") {
+		return address, callType, nil
+	}
+
+	// Assume phone number — sanitize and add tel: prefix
+	sanitized := sanitizePhoneNumber(address)
+	if sanitized == "" {
+		return "", callType, fmt.Errorf("invalid phone number: %q", input)
+	}
+	return "tel:" + sanitized, callType, nil
+}
+
+// sanitizePhoneNumber strips non-phone characters from a string,
+// matching the JS SDK's VALID_PHONE_REGEX /[\d\s()*#+.-]+/ behavior.
+// Returns the sanitized number or empty string if invalid.
+func sanitizePhoneNumber(input string) string {
+	var b strings.Builder
+	for _, r := range input {
+		if (r >= '0' && r <= '9') || r == '+' || r == '*' || r == '#' {
+			b.WriteRune(r)
+		}
+		// Skip spaces, parens, dots, dashes (JS SDK strips these)
+	}
+	return b.String()
 }
