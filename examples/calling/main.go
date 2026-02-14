@@ -976,9 +976,8 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				ticker.Stop()
-				// Stop silence — real audio is about to flow
-				close(stopSilence)
 				log.Println("Audio bridge: starting Mobius→Browser relay")
+				silenceStopped := false
 				buf := make([]byte, 1500)
 				for {
 					n, _, readErr := remoteTrack.Read(buf)
@@ -994,6 +993,12 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 					if writeErr := browserLocalTrack.WriteRTP(pkt); writeErr != nil {
 						log.Printf("Audio bridge: Mobius→Browser write error: %v", writeErr)
 						return
+					}
+					// Stop silence only after first real packet is written
+					if !silenceStopped {
+						close(stopSilence)
+						silenceStopped = true
+						log.Println("Audio bridge: silence keepalive stopped, real audio flowing")
 					}
 				}
 			}
