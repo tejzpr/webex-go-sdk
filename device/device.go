@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v1/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v1/webexsdk"
 )
 
 // DeviceResponse represents the response from the device registration

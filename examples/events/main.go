@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v1"
-	"github.com/tejzpr/webex-go-sdk/v1/events"
+	"github.com/WebexCommunity/webex-go-sdk/v1"
+	"github.com/WebexCommunity/webex-go-sdk/v1/events"
 )
 
 func main() {

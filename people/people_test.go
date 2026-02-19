@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v1/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v1/webexsdk"
 )
 
 func TestGet(t *testing.T) {

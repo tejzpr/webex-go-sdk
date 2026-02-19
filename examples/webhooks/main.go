@@ -14,8 +14,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/tejzpr/webex-go-sdk/v1"
-	"github.com/tejzpr/webex-go-sdk/v1/webhooks"
+	"github.com/WebexCommunity/webex-go-sdk/v1"
+	"github.com/WebexCommunity/webex-go-sdk/v1/webhooks"
 )
 
 func main() {

@@ -7,14 +7,14 @@
 
 A comprehensive, lightweight Go SDK for Cisco Webex API
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/tejzpr/webex-go-sdk.svg)](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk)
+[![Go Reference](https://pkg.go.dev/badge/github.com/WebexCommunity/webex-go-sdk.svg)](https://pkg.go.dev/github.com/WebexCommunity/webex-go-sdk)
 [![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Open Source](https://img.shields.io/badge/Open-Source-blue.svg)](https://github.com/tejzpr/webex-go-sdk)
-[![Go Tests](https://github.com/tejzpr/webex-go-sdk/actions/workflows/go-test.yml/badge.svg)](https://github.com/tejzpr/webex-go-sdk/actions/workflows/go-test.yml)
-[![Lint](https://github.com/tejzpr/webex-go-sdk/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/tejzpr/webex-go-sdk/actions/workflows/golangci-lint.yml)
+[![Open Source](https://img.shields.io/badge/Open-Source-blue.svg)](https://github.com/WebexCommunity/webex-go-sdk)
+[![Go Tests](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/go-test.yml/badge.svg)](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/go-test.yml)
+[![Lint](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/golangci-lint.yml)
 [![Codecov](https://codecov.io/gh/tejzpr/webex-go-sdk/branch/main/graph/badge.svg)](https://codecov.io/gh/tejzpr/webex-go-sdk)
-[![Release](https://img.shields.io/github/release/tejzpr/webex-go-sdk.svg)](https://github.com/tejzpr/webex-go-sdk/releases/latest)
-[![Go Report Card](https://goreportcard.com/badge/github.com/tejzpr/webex-go-sdk)](https://goreportcard.com/report/github.com/tejzpr/webex-go-sdk)
+[![Release](https://img.shields.io/github/release/tejzpr/webex-go-sdk.svg)](https://github.com/WebexCommunity/webex-go-sdk/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/WebexCommunity/webex-go-sdk)](https://goreportcard.com/report/github.com/WebexCommunity/webex-go-sdk)
 
 ## Implementation Status
 
@@ -25,7 +25,7 @@ A comprehensive, lightweight Go SDK for Cisco Webex API
 ## Installation
 
 ```bash
-go get github.com/tejzpr/webex-go-sdk
+go get github.com/WebexCommunity/webex-go-sdk
 ```
 
 ## Quick Start
@@ -38,7 +38,7 @@ import (
     "log"
     "os"
 
-    "github.com/tejzpr/webex-go-sdk/v1"
+    "github.com/WebexCommunity/webex-go-sdk/v1"
 )
 
 func main() {
@@ -105,7 +105,7 @@ fmt.Printf("Message sent: ID=%s\n", createdMessage.ID)
 
 For detailed documentation, examples, and API reference, see:
 
-- [Go Reference Documentation](https://pkg.go.dev/github.com/tejzpr/webex-go-sdk)
+- [Go Reference Documentation](https://pkg.go.dev/github.com/WebexCommunity/webex-go-sdk)
 - [Examples Directory](./examples)
 - [Cisco Webex API Documentation](https://developer.webex.com/docs/api/getting-started)
 
