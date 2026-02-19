@@ -126,6 +126,12 @@ For detailed documentation, examples, and API reference, see:
 
 - Go 1.21 or later
 
+## Questions, Support & Discussion
+
+webex-go-sdk is a community developed and community-supported project. If you experience any issues using this package, please report them using the issues page.
+
+Please join the [Webex Go SDK - Community Contributors](https://eurl.io/#Lvauinm-o) Webex space to ask questions, join the discussion, and share your projects and creations.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
