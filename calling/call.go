@@ -17,7 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Call represents an active or pending call with full call control.

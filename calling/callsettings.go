@@ -13,7 +13,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // CallSettingsClient provides methods for retrieving and updating call settings

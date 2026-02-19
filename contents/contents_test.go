@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 func newTestClient(t *testing.T, server *httptest.Server) *Client {

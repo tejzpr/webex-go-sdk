@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/tejzpr/webex-go-sdk/v2/mercury"
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/mercury"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 func TestNew(t *testing.T) {

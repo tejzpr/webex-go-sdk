@@ -9,7 +9,7 @@
 package calling
 
 import (
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Client is the top-level Calling client that aggregates all calling sub-clients.

@@ -22,8 +22,8 @@ This module is part of the Webex Go SDK. To use it, import the SDK and the trans
 
 ```go
 import (
-    "github.com/tejzpr/webex-go-sdk/v2"
-    "github.com/tejzpr/webex-go-sdk/v2/transcripts"
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/transcripts"
 )
 ```
 

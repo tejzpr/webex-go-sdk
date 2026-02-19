@@ -21,8 +21,8 @@ This module is part of the Webex Go SDK. To use it, import the SDK and the event
 
 ```go
 import (
-    "github.com/tejzpr/webex-go-sdk/v2"
-    "github.com/tejzpr/webex-go-sdk/v2/events"
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/events"
 )
 ```
 
@@ -154,8 +154,8 @@ import (
     "os"
     "time"
 
-    "github.com/tejzpr/webex-go-sdk/v2"
-    "github.com/tejzpr/webex-go-sdk/v2/events"
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/events"
 )
 
 func main() {

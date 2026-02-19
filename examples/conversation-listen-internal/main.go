@@ -12,8 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/tejzpr/webex-go-sdk/v2"
-	"github.com/tejzpr/webex-go-sdk/v2/conversation"
+	"github.com/WebexCommunity/webex-go-sdk/v2"
+	"github.com/WebexCommunity/webex-go-sdk/v2/conversation"
 )
 
 func main() {
