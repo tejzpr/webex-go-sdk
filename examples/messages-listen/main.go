@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v2"
-	"github.com/tejzpr/webex-go-sdk/v2/messages"
+	"github.com/WebexCommunity/webex-go-sdk/v2"
+	"github.com/WebexCommunity/webex-go-sdk/v2/messages"
 )
 
 func main() {

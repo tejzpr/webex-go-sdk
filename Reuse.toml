@@ -2,7 +2,7 @@
 name = "webex-go-sdk"
 description = "A Go SDK for the Cisco Webex APIs"
 authors = ["Tejus Pratap <tejzpr@gmail.com>"]
-repository = "https://github.com/tejzpr/webex-go-sdk"
+repository = "https://github.com/WebexCommunity/webex-go-sdk"
 
 [default]
 copyright = "2025 Tejus Pratap"

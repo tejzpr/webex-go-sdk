@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Recording represents a Webex meeting recording

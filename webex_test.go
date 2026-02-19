@@ -9,8 +9,8 @@ package webex
 import (
 	"testing"
 
-	"github.com/tejzpr/webex-go-sdk/v2/conversation"
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/conversation"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 func TestConversationReturnsSingletonWhenCached(t *testing.T) {

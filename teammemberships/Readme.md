@@ -18,8 +18,8 @@ This module is part of the Webex Go SDK. To use it, import the SDK and the teamm
 
 ```go
 import (
-    "github.com/tejzpr/webex-go-sdk/v2"
-    "github.com/tejzpr/webex-go-sdk/v2/teammemberships"
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/teammemberships"
 )
 ```
 
@@ -172,8 +172,8 @@ import (
     "log"
     "os"
 
-    "github.com/tejzpr/webex-go-sdk/v2"
-    "github.com/tejzpr/webex-go-sdk/v2/teammemberships"
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/teammemberships"
 )
 
 func main() {

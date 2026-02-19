@@ -14,7 +14,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Transcript represents a Webex meeting transcript

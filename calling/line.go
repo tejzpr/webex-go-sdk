@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Line represents a registered telephony line with a Mobius server.

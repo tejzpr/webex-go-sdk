@@ -31,8 +31,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	webex "github.com/tejzpr/webex-go-sdk/v2"
-	"github.com/tejzpr/webex-go-sdk/v2/calling"
+	webex "github.com/WebexCommunity/webex-go-sdk/v2"
+	"github.com/WebexCommunity/webex-go-sdk/v2/calling"
 )
 
 //go:embed static/*

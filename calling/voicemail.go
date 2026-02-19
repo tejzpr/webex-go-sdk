@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // VoicemailClient provides methods for retrieving and managing voicemail messages.

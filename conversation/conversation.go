@@ -12,9 +12,9 @@ import (
 	"log"
 	"sync"
 
-	"github.com/tejzpr/webex-go-sdk/v2/encryption"
-	"github.com/tejzpr/webex-go-sdk/v2/mercury"
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/encryption"
+	"github.com/WebexCommunity/webex-go-sdk/v2/mercury"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // ActivityHandler is a function that handles conversation activities

@@ -11,7 +11,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/tejzpr/webex-go-sdk/v2/webexsdk"
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // FileInfo holds metadata about a downloaded file attachment.
