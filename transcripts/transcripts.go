@@ -39,18 +39,19 @@ type Transcript struct {
 
 // Snippet represents a short segment of a transcript spoken by a specific participant
 type Snippet struct {
-	ID                string  `json:"id,omitempty"`
-	TranscriptID      string  `json:"transcriptId,omitempty"`
-	Text              string  `json:"text,omitempty"`
-	PersonName        string  `json:"personName,omitempty"`
-	PersonEmail       string  `json:"personEmail,omitempty"`
-	PeopleID          string  `json:"peopleId,omitempty"`
-	StartTime         string  `json:"startTime,omitempty"`
-	EndTime           string  `json:"endTime,omitempty"`
-	Duration          float64 `json:"duration,omitempty"`
-	OffsetMillisecond int     `json:"offsetMillisecond,omitempty"`
-	Language          string  `json:"language,omitempty"`
-	Confidence        float64 `json:"confidence,omitempty"`
+	ID                  string  `json:"id,omitempty"`
+	TranscriptID        string  `json:"transcriptId,omitempty"`
+	Text                string  `json:"text,omitempty"`
+	PersonName          string  `json:"personName,omitempty"`
+	PersonEmail         string  `json:"personEmail,omitempty"`
+	PeopleID            string  `json:"peopleId,omitempty"`
+	StartTime           string  `json:"startTime,omitempty"`
+	EndTime             string  `json:"endTime,omitempty"`
+	Duration            float64 `json:"duration,omitempty"`
+	DurationMillisecond int     `json:"durationMillisecond,omitempty"`
+	OffsetMillisecond   int     `json:"offsetMillisecond,omitempty"`
+	Language            string  `json:"language,omitempty"`
+	Confidence          float64 `json:"confidence,omitempty"`
 }
 
 // ListOptions contains the options for listing transcripts
