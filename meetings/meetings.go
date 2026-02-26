@@ -64,6 +64,25 @@ type Meeting struct {
 	HasRegistration              bool                        `json:"hasRegistration,omitempty"`
 	HasRegistrants               bool                        `json:"hasRegistrants,omitempty"`
 	Created                      *time.Time                  `json:"created,omitempty"`
+	UnlockedMeetingJoinSecurity  string                      `json:"unlockedMeetingJoinSecurity,omitempty"`
+	AllowAuthenticatedDevices    bool                        `json:"allowAuthenticatedDevices,omitempty"`
+	AllowFirstUserToBeCoHost     bool                        `json:"allowFirstUserToBeCoHost,omitempty"`
+	AttendeeDidJoin              bool                        `json:"attendeeDidJoin,omitempty"`
+	EnableAutomaticLock          bool                        `json:"enableAutomaticLock,omitempty"`
+	EnabledAudioWatermark        bool                        `json:"enabledAudioWatermark,omitempty"`
+	EnabledLiveStream            bool                        `json:"enabledLiveStream,omitempty"`
+	EnabledVisualWatermark       bool                        `json:"enabledVisualWatermark,omitempty"`
+	EnabledWebcastView           bool                        `json:"enabledWebcastView,omitempty"`
+	RequireAttendeeLogin         bool                        `json:"requireAttendeeLogin,omitempty"`
+	RestrictToInvitees           bool                        `json:"restrictToInvitees,omitempty"`
+	AutomaticLockMinutes         int                         `json:"automaticLockMinutes,omitempty"`
+	ReminderTime                 int                         `json:"reminderTime,omitempty"`
+	SessionTypeId                int                         `json:"sessionTypeId,omitempty"`
+	VisualWatermarkOpacity       int                         `json:"visualWatermarkOpacity,omitempty"`
+	TrackingCodes                []TrackingCode              `json:"trackingCodes,omitempty"`
+	AttendeePrivileges           *AttendeePrivileges         `json:"attendeePrivileges,omitempty"`
+	MeetingOptions               *MeetingOptions             `json:"meetingOptions,omitempty"`
+	LiveStream                   *LiveStream                 `json:"liveStream,omitempty"`
 }
 
 // Telephony contains telephony dial-in information for a meeting
@@ -88,6 +107,52 @@ type TelephonyLink struct {
 
 // TelephonyLinks represents the telephony links structure which can be either a single object or an array
 type TelephonyLinks []TelephonyLink
+
+// TrackingCode represents a tracking code for a meeting
+type TrackingCode struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+// AttendeePrivileges contains attendee privilege settings
+type AttendeePrivileges struct {
+	EnabledAnnotate                 bool `json:"enabledAnnotate,omitempty"`
+	EnabledChatHost                 bool `json:"enabledChatHost,omitempty"`
+	EnabledChatOtherParticipants    bool `json:"enabledChatOtherParticipants,omitempty"`
+	EnabledChatPresenter            bool `json:"enabledChatPresenter,omitempty"`
+	EnabledContactOperatorPrivately bool `json:"enabledContactOperatorPrivately,omitempty"`
+	EnabledPrintDocument            bool `json:"enabledPrintDocument,omitempty"`
+	EnabledRemoteControl            bool `json:"enabledRemoteControl,omitempty"`
+	EnabledSaveDocument             bool `json:"enabledSaveDocument,omitempty"`
+	EnabledShareContent             bool `json:"enabledShareContent,omitempty"`
+	EnabledViewAnyDocument          bool `json:"enabledViewAnyDocument,omitempty"`
+	EnabledViewAnyPage              bool `json:"enabledViewAnyPage,omitempty"`
+	EnabledViewParticipantList      bool `json:"enabledViewParticipantList,omitempty"`
+	EnabledViewThumbnails           bool `json:"enabledViewThumbnails,omitempty"`
+}
+
+// MeetingOptions contains meeting option settings
+type MeetingOptions struct {
+	EnabledChat         bool   `json:"enabledChat,omitempty"`
+	EnabledFileTransfer bool   `json:"enabledFileTransfer,omitempty"`
+	EnabledNote         bool   `json:"enabledNote,omitempty"`
+	EnabledPolling      bool   `json:"enabledPolling,omitempty"`
+	EnabledUCFRichMedia bool   `json:"enabledUCFRichMedia,omitempty"`
+	EnabledVideo        bool   `json:"enabledVideo,omitempty"`
+	NoteType            string `json:"noteType,omitempty"`
+}
+
+// LiveStream contains live streaming configuration
+type LiveStream struct {
+	Destination                 string `json:"destination,omitempty"`
+	LayoutWithSharedContent     string `json:"layoutWithSharedContent,omitempty"`
+	LayoutWithoutSharedContent  string `json:"layoutWithoutSharedContent,omitempty"`
+	Resolution                  string `json:"resolution,omitempty"`
+	RtmpUrl                     string `json:"rtmpUrl,omitempty"`
+	StreamUrl                   string `json:"streamUrl,omitempty"`
+	AllowChangeLayoutInMeeting  bool   `json:"allowChangeLayoutInMeeting,omitempty"`
+	FollowStageLayoutWhenSynced bool   `json:"followStageLayoutWhenSynced,omitempty"`
+}
 
 // Registration contains meeting registration settings
 type Registration struct {

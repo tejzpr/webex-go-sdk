@@ -637,10 +637,12 @@ func TestMeetingTelephonyDeserialization(t *testing.T) {
 						"tollType": "toll"
 					}
 				],
-				"links": {
-					"globalCallinNumbers": "https://example.com/call",
-					"telephonyTopic": "Meeting Telephony"
-				}
+				"links": [
+					{
+						"globalCallinNumbers": "https://example.com/call",
+						"telephonyTopic": "Meeting Telephony"
+					}
+				]
 			},
 			"audioConnectionOptions": {
 				"audioConnectionType": "webexAudio",
