@@ -37,6 +37,7 @@ type Recording struct {
 	ShareToMe                    bool                    `json:"shareToMe,omitempty"`
 	ServiceType                  string                  `json:"serviceType,omitempty"`
 	Status                       string                  `json:"status,omitempty"`
+	IntegrationTags              []string                `json:"integrationTags,omitempty"`
 }
 
 // TemporaryDownloadLinks contains time-limited direct download URLs for
