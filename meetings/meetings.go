@@ -68,9 +68,9 @@ type Meeting struct {
 
 // Telephony contains telephony dial-in information for a meeting
 type Telephony struct {
-	AccessCode    string         `json:"accessCode,omitempty"`
-	CallInNumbers []CallInNumber `json:"callInNumbers,omitempty"`
-	Links         *TelephonyLink `json:"links,omitempty"`
+	AccessCode    string          `json:"accessCode,omitempty"`
+	CallInNumbers []CallInNumber  `json:"callInNumbers,omitempty"`
+	Links         *TelephonyLinks `json:"links,omitempty"`
 }
 
 // CallInNumber represents a phone number for dialing into a meeting
@@ -85,6 +85,9 @@ type TelephonyLink struct {
 	GlobalCallinNumbers string `json:"globalCallinNumbers,omitempty"`
 	TelephonyTopic      string `json:"telephonyTopic,omitempty"`
 }
+
+// TelephonyLinks represents the telephony links structure which can be either a single object or an array
+type TelephonyLinks []TelephonyLink
 
 // Registration contains meeting registration settings
 type Registration struct {

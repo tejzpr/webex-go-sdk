@@ -673,7 +673,10 @@ func TestMeetingTelephonyDeserialization(t *testing.T) {
 	if meeting.Telephony.Links == nil {
 		t.Fatal("Expected telephony links to be non-nil")
 	}
-	if meeting.Telephony.Links.GlobalCallinNumbers != "https://example.com/call" {
+	if len(*meeting.Telephony.Links) == 0 {
+		t.Fatal("Expected telephony links to have at least one item")
+	}
+	if (*meeting.Telephony.Links)[0].GlobalCallinNumbers != "https://example.com/call" {
 		t.Errorf("Expected globalCallinNumbers link")
 	}
 
