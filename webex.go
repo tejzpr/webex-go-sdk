@@ -12,6 +12,7 @@ import (
 
 	"github.com/WebexCommunity/webex-go-sdk/v2/attachmentactions"
 	"github.com/WebexCommunity/webex-go-sdk/v2/calling"
+	"github.com/WebexCommunity/webex-go-sdk/v2/contents"
 	"github.com/WebexCommunity/webex-go-sdk/v2/conversation"
 	"github.com/WebexCommunity/webex-go-sdk/v2/device"
 	"github.com/WebexCommunity/webex-go-sdk/v2/events"
@@ -20,6 +21,7 @@ import (
 	"github.com/WebexCommunity/webex-go-sdk/v2/mercury"
 	"github.com/WebexCommunity/webex-go-sdk/v2/messages"
 	"github.com/WebexCommunity/webex-go-sdk/v2/people"
+	"github.com/WebexCommunity/webex-go-sdk/v2/recordings"
 	"github.com/WebexCommunity/webex-go-sdk/v2/rooms"
 	"github.com/WebexCommunity/webex-go-sdk/v2/roomtabs"
 	"github.com/WebexCommunity/webex-go-sdk/v2/teammemberships"
@@ -46,9 +48,11 @@ type WebexClient struct {
 	webhooksClient          *webhooks.Client
 	eventsClient            *events.Client
 	meetingsClient          *meetings.Client
+	recordingsClient        *recordings.Client
 	transcriptsClient       *transcripts.Client
 	conversationClient      *conversation.Client
 	callingClient           *calling.Client
+	contentsClient          *contents.Client
 
 	// Internal plugins
 	mercuryClient *mercury.Client
@@ -144,6 +148,14 @@ func (c *WebexClient) Webhooks() *webhooks.Client {
 	return c.webhooksClient
 }
 
+// Contents returns the Contents plugin
+func (c *WebexClient) Contents() *contents.Client {
+	if c.contentsClient == nil {
+		c.contentsClient = contents.New(c.core, nil)
+	}
+	return c.contentsClient
+}
+
 // Events returns the Events plugin
 func (c *WebexClient) Events() *events.Client {
 	if c.eventsClient == nil {
@@ -158,6 +170,14 @@ func (c *WebexClient) Meetings() *meetings.Client {
 		c.meetingsClient = meetings.New(c.core, nil)
 	}
 	return c.meetingsClient
+}
+
+// Recordings returns the Recordings plugin
+func (c *WebexClient) Recordings() *recordings.Client {
+	if c.recordingsClient == nil {
+		c.recordingsClient = recordings.New(c.core, nil)
+	}
+	return c.recordingsClient
 }
 
 // Transcripts returns the Transcripts plugin
