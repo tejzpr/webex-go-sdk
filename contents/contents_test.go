@@ -109,7 +109,7 @@ func TestDownloadFromURL(t *testing.T) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Content-Disposition", `attachment; filename="photo.png"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write(imageData)
+		_, _ = w.Write(imageData)
 	}))
 	defer server.Close()
 
@@ -142,7 +142,7 @@ func TestDownload_StructuredErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"message":"content not found","trackingId":"test-123"}`))
+		_, _ = w.Write([]byte(`{"message":"content not found","trackingId":"test-123"}`))
 	}))
 	defer server.Close()
 
@@ -169,7 +169,7 @@ func TestDownload_410Gone_InfectedFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
-		w.Write([]byte(`{"message":"file is infected and unavailable"}`))
+		_, _ = w.Write([]byte(`{"message":"file is infected and unavailable"}`))
 	}))
 	defer server.Close()
 
@@ -189,7 +189,7 @@ func TestDownload_428PreconditionRequired_UnscannableFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(428)
-		w.Write([]byte(`{"message":"file cannot be scanned"}`))
+		_, _ = w.Write([]byte(`{"message":"file cannot be scanned"}`))
 	}))
 	defer server.Close()
 
@@ -211,14 +211,14 @@ func TestDownloadWithOptions_AllowUnscannable(t *testing.T) {
 		// Verify allow=unscannable query parameter
 		if r.URL.Query().Get("allow") != "unscannable" {
 			w.WriteHeader(428)
-			w.Write([]byte(`{"message":"file cannot be scanned"}`))
+			_, _ = w.Write([]byte(`{"message":"file cannot be scanned"}`))
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", `attachment; filename="encrypted.zip"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -246,7 +246,7 @@ func TestDownloadWithOptions_NilOptions(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -267,7 +267,7 @@ func TestDownloadWithOptions_FalseUnscannable(t *testing.T) {
 			t.Error("Expected no allow query param when AllowUnscannable=false")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("data"))
+		_, _ = w.Write([]byte("data"))
 	}))
 	defer server.Close()
 
@@ -284,7 +284,7 @@ func TestDownloadFromURL_StructuredErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"message":"access denied","trackingId":"track-456"}`))
+		_, _ = w.Write([]byte(`{"message":"access denied","trackingId":"track-456"}`))
 	}))
 	defer server.Close()
 
@@ -304,12 +304,12 @@ func TestDownloadFromURLWithOptions_AllowUnscannable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("allow") != "unscannable" {
 			w.WriteHeader(428)
-			w.Write([]byte(`{"message":"unscannable"}`))
+			_, _ = w.Write([]byte(`{"message":"unscannable"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -333,7 +333,7 @@ func TestDownload_423Locked_ReturnsLockedError(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", "1")
 		w.WriteHeader(423)
-		w.Write([]byte(`{"message":"file is being scanned"}`))
+		_, _ = w.Write([]byte(`{"message":"file is being scanned"}`))
 	}))
 	defer server.Close()
 
@@ -392,13 +392,13 @@ func TestDownload_423AutoRetrySuccess(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(423)
-			w.Write([]byte(`{"message":"file is being scanned"}`))
+			_, _ = w.Write([]byte(`{"message":"file is being scanned"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("Content-Disposition", `attachment; filename="scanned.txt"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -426,7 +426,7 @@ func TestDownload_423RetriesExhausted(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Retry-After", "0")
 		w.WriteHeader(423)
-		w.Write([]byte(`{"message":"file is being scanned"}`))
+		_, _ = w.Write([]byte(`{"message":"file is being scanned"}`))
 	}))
 	defer server.Close()
 
@@ -454,12 +454,12 @@ func TestDownload_423RetryWithRetryAfterHeader(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(423)
-			w.Write([]byte(`{"message":"scanning"}`))
+			_, _ = w.Write([]byte(`{"message":"scanning"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -492,13 +492,13 @@ func TestDownloadFromURL_423AutoRetrySuccess(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(423)
-			w.Write([]byte(`{"message":"scanning"}`))
+			_, _ = w.Write([]byte(`{"message":"scanning"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Content-Disposition", `attachment; filename="photo.png"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -527,7 +527,7 @@ func TestDownloadFromURLWithOptions_423AutoRetry(t *testing.T) {
 		if attempts <= 2 {
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(423)
-			w.Write([]byte(`{"message":"scanning"}`))
+			_, _ = w.Write([]byte(`{"message":"scanning"}`))
 			return
 		}
 		// Verify allow=unscannable is still present on retry
@@ -536,7 +536,7 @@ func TestDownloadFromURLWithOptions_423AutoRetry(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 
@@ -563,12 +563,12 @@ func TestDownloadWithOptions_423AutoRetry(t *testing.T) {
 		if attempts == 1 {
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(423)
-			w.Write([]byte(`{"message":"scanning"}`))
+			_, _ = w.Write([]byte(`{"message":"scanning"}`))
 			return
 		}
 		w.Header().Set("Content-Type", "application/pdf")
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		_, _ = w.Write(fileData)
 	}))
 	defer server.Close()
 

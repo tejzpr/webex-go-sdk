@@ -441,7 +441,7 @@ func TestLine(t *testing.T) {
 	t.Run("Register already registered is no-op", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(MobiusDeviceInfo{
+			_ = json.NewEncoder(w).Encode(MobiusDeviceInfo{
 				Device: &DeviceType{DeviceID: "dev-1"},
 			})
 		}))
@@ -466,7 +466,7 @@ func TestLine(t *testing.T) {
 	t.Run("GetDeviceInfo", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(MobiusDeviceInfo{
+			_ = json.NewEncoder(w).Encode(MobiusDeviceInfo{
 				UserID: "user-xyz",
 				Device: &DeviceType{DeviceID: "dev-1"},
 			})
@@ -828,7 +828,7 @@ func TestCallingClient(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(MobiusDeviceInfo{
+				_ = json.NewEncoder(w).Encode(MobiusDeviceInfo{
 					Device: &DeviceType{DeviceID: "dev-1"},
 				})
 				return

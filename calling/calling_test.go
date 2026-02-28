@@ -99,7 +99,7 @@ func TestCallHistoryGetCallHistoryData(t *testing.T) {
 				t.Errorf("Expected days=7, got %s", r.URL.Query().Get("days"))
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"userSessions": []map[string]interface{}{
 					{"id": "session-1", "sessionId": "s1", "disposition": "Answered", "direction": "outbound"},
 					{"id": "session-2", "sessionId": "s2", "disposition": "MISSED", "direction": "inbound"},
@@ -129,7 +129,7 @@ func TestCallHistoryGetCallHistoryData(t *testing.T) {
 	t.Run("error response", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"message": "Unauthorized"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "Unauthorized"})
 		}))
 		defer server.Close()
 
@@ -209,7 +209,7 @@ func TestCallSettingsGetCallWaiting(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"enabled":           true,
 			"ringSplashEnabled": false,
 		})
@@ -237,7 +237,7 @@ func TestCallSettingsGetDND(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
 	}))
 	defer server.Close()
 
@@ -288,7 +288,7 @@ func TestCallSettingsGetCallForward(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"callForwarding": map[string]interface{}{
 				"always": map[string]interface{}{"enabled": false},
 			},
@@ -341,7 +341,7 @@ func TestCallSettingsGetVoicemail(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
 	}))
 	defer server.Close()
 
@@ -389,7 +389,7 @@ func TestCallSettingsGetCallForwardAlways(t *testing.T) {
 				t.Error("Did not expect directoryNumber query param")
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
 		}))
 		defer server.Close()
 
@@ -411,7 +411,7 @@ func TestCallSettingsGetCallForwardAlways(t *testing.T) {
 				t.Errorf("Expected directoryNumber=1234, got %s", r.URL.Query().Get("directoryNumber"))
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true})
 		}))
 		defer server.Close()
 
@@ -431,7 +431,7 @@ func TestCallSettingsGetCallForwardAlways(t *testing.T) {
 func TestCallSettingsErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Forbidden"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Forbidden"})
 	}))
 	defer server.Close()
 
@@ -461,7 +461,7 @@ func TestVoicemailGetList(t *testing.T) {
 			t.Errorf("Expected offset=0, got %s", r.URL.Query().Get("offset"))
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"items": []map[string]interface{}{
 				{"messageId": "msg-1", "duration": "30"},
 				{"messageId": "msg-2", "duration": "45"},
@@ -491,7 +491,7 @@ func TestVoicemailGetContent(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"type":    "audio/wav",
 			"content": "base64-encoded-audio",
 		})
@@ -516,7 +516,7 @@ func TestVoicemailGetContent(t *testing.T) {
 func TestVoicemailGetSummary(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"newMessages":       3,
 			"oldMessages":       10,
 			"newUrgentMessages": 1,
@@ -618,7 +618,7 @@ func TestVoicemailGetTranscript(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"transcript": "Hello, this is a test voicemail.",
 		})
 	}))
@@ -642,7 +642,7 @@ func TestVoicemailGetTranscript(t *testing.T) {
 func TestVoicemailErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Service unavailable"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Service unavailable"})
 	}))
 	defer server.Close()
 
@@ -669,7 +669,7 @@ func TestContactsGetContacts(t *testing.T) {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"contacts": []map[string]interface{}{
 				{"contactId": "c1", "displayName": "Alice", "contactType": "CLOUD", "encryptionKeyUrl": "kms://key1", "groups": []string{}, "resolved": true},
 			},
@@ -719,7 +719,7 @@ func TestContactsCreateContactGroup(t *testing.T) {
 		}
 
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"group": map[string]interface{}{
 				"groupId":          "g-new",
 				"displayName":      "My Group",
@@ -775,7 +775,7 @@ func TestContactsCreateContact(t *testing.T) {
 			t.Errorf("Expected POST, got %s", r.Method)
 		}
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"contact": map[string]interface{}{
 				"contactId":        "c-new",
 				"displayName":      "Bob",
@@ -836,7 +836,7 @@ func TestContactsDeleteContact(t *testing.T) {
 func TestContactsErrorResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Not found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Not found"})
 	}))
 	defer server.Close()
 
