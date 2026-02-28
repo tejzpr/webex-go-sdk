@@ -10,6 +10,7 @@ package recordings
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -17,6 +18,15 @@ import (
 
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
+
+// skipOn403 skips the test if the error is an API 403 (missing scopes).
+func skipOn403(t *testing.T, err error) {
+	t.Helper()
+	var apiErr *webexsdk.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 403 {
+		t.Skipf("Skipping: token lacks required scopes: %v", err)
+	}
+}
 
 // TestFunctionalListRecordings lists recordings from the last 7 days
 // using the real Webex API.
@@ -49,6 +59,7 @@ func TestFunctionalListRecordings(t *testing.T) {
 
 	page, err := recordingsClient.List(options)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to list recordings: %v", err)
 	}
 
@@ -117,12 +128,14 @@ func TestFunctionalListRecordingsByMeeting(t *testing.T) {
 	// First, get a list of meetings to find one with recordings
 	resp, err := client.Request("GET", "meetings", nil, nil)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to list meetings: %v", err)
 	}
 	defer resp.Body.Close()
 
 	page, err := webexsdk.NewPage(resp, client, "meetings")
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to create page: %v", err)
 	}
 
@@ -208,6 +221,7 @@ func TestFunctionalListRecordingsByFormat(t *testing.T) {
 
 			page, err := recordingsClient.List(options)
 			if err != nil {
+				skipOn403(t, err)
 				t.Fatalf("Failed to list %s recordings: %v", format, err)
 			}
 
@@ -260,6 +274,7 @@ func TestFunctionalListRecordingsByStatus(t *testing.T) {
 
 			page, err := recordingsClient.List(options)
 			if err != nil {
+				skipOn403(t, err)
 				t.Fatalf("Failed to list %s recordings: %v", status, err)
 			}
 
@@ -281,4 +296,147 @@ func TestFunctionalListRecordingsByStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFunctionalRecordingsGetWithDownloadLinks tests getting a recording with temporary download links
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalRecordingsGetWithDownloadLinks -v ./recordings/
+func TestFunctionalRecordingsGetWithDownloadLinks(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	recordingsClient := New(client, nil)
+
+	page, err := recordingsClient.List(&ListOptions{
+		From: time.Now().AddDate(0, 0, -30).Format(time.RFC3339),
+		To:   time.Now().Format(time.RFC3339),
+		Max:  5,
+	})
+	if err != nil {
+		skipOn403(t, err)
+		t.Fatalf("Failed to list recordings: %v", err)
+	}
+	if len(page.Items) == 0 {
+		t.Skip("No recordings found in the last 30 days")
+	}
+
+	recording, err := recordingsClient.Get(page.Items[0].ID)
+	if err != nil {
+		t.Fatalf("Failed to get recording: %v", err)
+	}
+
+	t.Logf("Recording: ID=%s Topic=%q Format=%s Duration=%ds", recording.ID, recording.Topic, recording.Format, recording.DurationSeconds)
+
+	if recording.TemporaryDirectDownloadLinks != nil {
+		links := recording.TemporaryDirectDownloadLinks
+		t.Logf("Download links available (expires: %s)", links.Expiration)
+		if links.RecordingDownloadLink != "" {
+			t.Logf("  Recording: available")
+		}
+		if links.AudioDownloadLink != "" {
+			t.Logf("  Audio: available")
+		}
+		if links.TranscriptDownloadLink != "" {
+			t.Logf("  Transcript: available")
+		}
+	} else {
+		t.Logf("No temporary download links (may require specific permissions)")
+	}
+}
+
+// TestFunctionalRecordingsDownloadAudio tests downloading audio from a recording
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalRecordingsDownloadAudio -v ./recordings/
+func TestFunctionalRecordingsDownloadAudio(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 60 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	recordingsClient := New(client, nil)
+
+	page, err := recordingsClient.List(&ListOptions{
+		From: time.Now().AddDate(0, 0, -30).Format(time.RFC3339),
+		To:   time.Now().Format(time.RFC3339),
+		Max:  10,
+	})
+	if err != nil {
+		skipOn403(t, err)
+		t.Fatalf("Failed to list recordings: %v", err)
+	}
+	if len(page.Items) == 0 {
+		t.Skip("No recordings found")
+	}
+
+	for _, rec := range page.Items {
+		audioURL, _, err := recordingsClient.GetAudioDownloadLink(rec.ID)
+		if err != nil {
+			t.Logf("No audio link for recording %s: %v", rec.ID, err)
+			continue
+		}
+
+		t.Logf("Downloading audio from recording %s", rec.ID)
+		content, err := recordingsClient.DownloadAudio(rec.ID)
+		if err != nil {
+			t.Fatalf("Failed to download audio: %v", err)
+		}
+
+		t.Logf("Audio downloaded: ContentType=%s Size=%d bytes", content.ContentType, len(content.Data))
+		_ = audioURL
+		return
+	}
+	t.Skip("No recordings with audio download links found")
+}
+
+// TestFunctionalRecordingsNotFound tests structured error on invalid recording ID
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalRecordingsNotFound -v ./recordings/
+func TestFunctionalRecordingsNotFound(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	recordingsClient := New(client, nil)
+
+	_, err = recordingsClient.Get("invalid-recording-id")
+	if err == nil {
+		t.Fatal("Expected error for invalid recording ID, got nil")
+	}
+
+	var apiErr *webexsdk.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("Expected APIError, got %T: %v", err, err)
+	}
+	t.Logf("Got expected API error: status=%d message=%q trackingId=%s",
+		apiErr.StatusCode, apiErr.Message, apiErr.TrackingID)
 }

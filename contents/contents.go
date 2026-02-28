@@ -65,11 +65,18 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 // The contentID is the Webex content identifier (the base64-encoded ID
 // found at the end of URLs like https://webexapis.com/v1/contents/{contentId}).
 //
-// Anti-malware behavior:
-//   - Returns *webexsdk.LockedError (423) if the file is being scanned.
-//     The SDK retry logic will automatically retry with Retry-After.
-//   - Returns *webexsdk.GoneError (410) if the file is infected.
-//   - Returns *webexsdk.PreconditionRequiredError (428) if the file is unscannable.
+// Automatic retry for file scanning (423):
+//
+//	The SDK automatically retries HTTP 423 (Locked) responses, which Webex
+//	returns while a file is being scanned for malware. Retries honour the
+//	Retry-After header and are governed by Config.MaxRetries (default 3)
+//	and Config.RetryBaseDelay (default 1 s) on the underlying webexsdk.Client.
+//	If scanning still hasn't completed after all retries, a structured
+//	*webexsdk.APIError with StatusCode 423 is returned.
+//
+// Other anti-malware responses:
+//   - Returns *webexsdk.APIError with 410 Gone if the file is infected.
+//   - Returns *webexsdk.APIError with 428 Precondition Required if the file is unscannable.
 //     Use DownloadWithOptions with AllowUnscannable=true to download such files.
 func (c *Client) Download(contentID string) (*FileInfo, error) {
 	return c.DownloadWithOptions(contentID, nil)
@@ -116,7 +123,8 @@ func (c *Client) DownloadWithOptions(contentID string, opts *DownloadOptions) (*
 // This accepts the URLs directly from Message.Files (e.g.,
 // "https://webexapis.com/v1/contents/Y2lzY29...").
 //
-// Returns structured error types for anti-malware responses (see Download for details).
+// Automatic retry behaviour and anti-malware semantics are identical to
+// [Download]; see its documentation for details.
 func (c *Client) DownloadFromURL(contentURL string) (*FileInfo, error) {
 	return c.DownloadFromURLWithOptions(contentURL, nil)
 }

@@ -312,7 +312,7 @@ func (c *Client) downloadFromURL(downloadURL string) (*DownloadedContent, error)
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("download error: %d - %s", resp.StatusCode, string(body))
+		return nil, webexsdk.NewAPIError(resp, body)
 	}
 
 	data, err := io.ReadAll(resp.Body)

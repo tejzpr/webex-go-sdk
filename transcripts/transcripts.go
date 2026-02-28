@@ -222,7 +222,7 @@ func (c *Client) Download(transcriptID string, format string, opts ...*DownloadO
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error: %d - %s", resp.StatusCode, string(body))
+		return "", webexsdk.NewAPIError(resp, body)
 	}
 
 	body, err := io.ReadAll(resp.Body)

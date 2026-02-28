@@ -109,6 +109,7 @@ func DefaultConfig() *Config {
 }
 
 // NewClient creates a new Webex client with the given access token and optional configuration
+// If config is nil, the default configuration will be used.
 func NewClient(accessToken string, config *Config) (*Client, error) {
 	if accessToken == "" {
 		return nil, fmt.Errorf("access token cannot be empty")
@@ -116,6 +117,15 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 
 	if config == nil {
 		config = DefaultConfig()
+	} else {
+		// Validate BaseURL
+		if config.BaseURL == "" {
+			config.BaseURL = DefaultConfig().BaseURL
+		}
+		// Validate Timeout
+		if config.Timeout <= 0 {
+			config.Timeout = DefaultConfig().Timeout
+		}
 	}
 
 	baseURL, err := url.Parse(config.BaseURL)

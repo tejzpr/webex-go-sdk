@@ -9,6 +9,7 @@
 package meetings
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -16,6 +17,15 @@ import (
 
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
+
+// skipOn403 skips the test if the error is an API 403 (missing scopes/licenses).
+func skipOn403(t *testing.T, err error) {
+	t.Helper()
+	var apiErr *webexsdk.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == 403 {
+		t.Skipf("Skipping: token lacks required meeting scopes: %v", err)
+	}
+}
 
 // TestFunctionalListMeetings lists all meetings between Feb 25 2026 and Feb 26 2026
 // using the real Webex API.
@@ -48,6 +58,7 @@ func TestFunctionalListMeetings(t *testing.T) {
 
 	page, err := meetingsClient.List(options)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to list meetings: %v", err)
 	}
 
@@ -151,6 +162,7 @@ func TestFunctionalCreateGetUpdateDeleteMeeting(t *testing.T) {
 	t.Logf("Creating meeting: %s from %s to %s", meeting.Title, meeting.Start, meeting.End)
 	created, err := meetingsClient.Create(meeting)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to create meeting: %v", err)
 	}
 
@@ -253,6 +265,7 @@ func TestFunctionalListParticipants(t *testing.T) {
 
 	page, err := meetingsClient.List(options)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to list meetings: %v", err)
 	}
 
@@ -376,6 +389,7 @@ func TestFunctionalListAllMeetingTypes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			page, err := meetingsClient.List(tc.options)
 			if err != nil {
+				skipOn403(t, err)
 				t.Fatalf("Failed to list %s: %v", tc.name, err)
 			}
 
@@ -426,6 +440,7 @@ func TestFunctionalListTomorrowMeetings(t *testing.T) {
 
 	page, err := meetingsClient.List(options)
 	if err != nil {
+		skipOn403(t, err)
 		t.Fatalf("Failed to list meetings: %v", err)
 	}
 
@@ -478,4 +493,100 @@ func TestFunctionalListTomorrowMeetings(t *testing.T) {
 		}
 		fmt.Fprintf(os.Stdout, "\n")
 	}
+}
+
+// TestFunctionalMeetingsNotFound tests structured error on invalid meeting ID
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalMeetingsNotFound -v ./meetings/
+func TestFunctionalMeetingsNotFound(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	meetingsClient := New(client, nil)
+
+	_, err = meetingsClient.Get("invalid-meeting-id-does-not-exist")
+	if err == nil {
+		t.Fatal("Expected error for invalid meeting ID, got nil")
+	}
+
+	// Verify structured error
+	var apiErr *webexsdk.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("Expected APIError, got %T: %v", err, err)
+	}
+	t.Logf("Got expected API error: status=%d message=%q trackingId=%s",
+		apiErr.StatusCode, apiErr.Message, apiErr.TrackingID)
+
+	// Check IsNotFound convenience function
+	if webexsdk.IsNotFound(err) {
+		t.Logf("IsNotFound correctly returned true")
+	} else {
+		t.Logf("IsNotFound returned false (status was %d)", apiErr.StatusCode)
+	}
+}
+
+// TestFunctionalMeetingsListPagination tests pagination through meetings
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalMeetingsListPagination -v ./meetings/
+func TestFunctionalMeetingsListPagination(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	meetingsClient := New(client, nil)
+
+	// Request small pages to test pagination with ended meetings from last 30 days
+	options := &ListOptions{
+		MeetingType: "meeting",
+		State:       "ended",
+		From:        time.Now().AddDate(0, 0, -30).Format(time.RFC3339),
+		To:          time.Now().Format(time.RFC3339),
+		Max:         2,
+	}
+
+	page, err := meetingsClient.List(options)
+	if err != nil {
+		skipOn403(t, err)
+		t.Fatalf("Failed to list meetings: %v", err)
+	}
+
+	totalItems := len(page.Items)
+	pageCount := 1
+	t.Logf("Page %d: %d items", pageCount, len(page.Items))
+
+	// Traverse pages (limit to 5 pages to avoid runaway)
+	for page.HasNext && pageCount < 5 {
+		nextPage, err := page.Page.Next()
+		if err != nil {
+			t.Fatalf("Failed to get next page: %v", err)
+		}
+
+		page.Page = nextPage
+		pageCount++
+		totalItems += len(nextPage.Items)
+		t.Logf("Page %d: %d items", pageCount, len(nextPage.Items))
+	}
+
+	t.Logf("Total: %d items across %d pages", totalItems, pageCount)
 }

@@ -322,8 +322,7 @@ func TestDownloadFromURLWithOptions_AllowUnscannable(t *testing.T) {
 
 func TestDownload_423Locked_ReturnsLockedError(t *testing.T) {
 	// 423 means file is being scanned — returns LockedError
-	// With retry enabled, this tests that after exhausting retries we still
-	// get the structured error
+	// With MaxRetries=0 (no retries), we should get the error immediately.
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -353,5 +352,231 @@ func TestDownload_423Locked_ReturnsLockedError(t *testing.T) {
 	}
 	if !webexsdk.IsLocked(err) {
 		t.Errorf("Expected IsLocked, got %T: %v", err, err)
+	}
+	if attempts != 1 {
+		t.Errorf("Expected exactly 1 attempt with MaxRetries=0, got %d", attempts)
+	}
+}
+
+func newTestClientWithRetries(t *testing.T, server *httptest.Server, maxRetries int) *Client {
+	t.Helper()
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:        server.URL,
+		Timeout:        5 * time.Second,
+		HttpClient:     server.Client(),
+		MaxRetries:     maxRetries,
+		RetryBaseDelay: 10 * time.Millisecond, // fast retries for tests
+		DefaultHeaders: make(map[string]string),
+	}
+	wc, err := webexsdk.NewClient("test-token", config)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	wc.BaseURL = baseURL
+	return New(wc, nil)
+}
+
+func TestDownload_423AutoRetrySuccess(t *testing.T) {
+	// Server returns 423 twice, then succeeds on 3rd attempt.
+	// With MaxRetries=3, Download should succeed automatically.
+	fileData := []byte("scanned file content")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(423)
+			w.Write([]byte(`{"message":"file is being scanned"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Disposition", `attachment; filename="scanned.txt"`)
+		w.WriteHeader(http.StatusOK)
+		w.Write(fileData)
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 3)
+	info, err := cc.Download("scan-pending-id")
+	if err != nil {
+		t.Fatalf("Download should have succeeded after retries, got: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("Expected 3 attempts (2x 423 + 1x 200), got %d", attempts)
+	}
+	if string(info.Data) != string(fileData) {
+		t.Error("Data mismatch after retry")
+	}
+	if info.ContentType != "text/plain" {
+		t.Errorf("Expected text/plain, got %s", info.ContentType)
+	}
+}
+
+func TestDownload_423RetriesExhausted(t *testing.T) {
+	// Server always returns 423 — after MaxRetries the caller gets a LockedError.
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Retry-After", "0")
+		w.WriteHeader(423)
+		w.Write([]byte(`{"message":"file is being scanned"}`))
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 2)
+	_, err := cc.Download("forever-scanning-id")
+	if err == nil {
+		t.Fatal("Expected error after retries exhausted")
+	}
+	if !webexsdk.IsLocked(err) {
+		t.Errorf("Expected IsLocked error, got %T: %v", err, err)
+	}
+	// 1 initial + 2 retries = 3 total
+	if attempts != 3 {
+		t.Errorf("Expected 3 attempts (1 + MaxRetries=2), got %d", attempts)
+	}
+}
+
+func TestDownload_423RetryWithRetryAfterHeader(t *testing.T) {
+	// Verify that Retry-After header is respected (indirectly via timing).
+	fileData := []byte("finally scanned")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(423)
+			w.Write([]byte(`{"message":"scanning"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fileData)
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 3)
+	start := time.Now()
+	info, err := cc.Download("slow-scan-id")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("Download should have succeeded: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+	// Retry-After: 1 means at least 1 second delay
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("Expected at least ~1s delay for Retry-After, got %v", elapsed)
+	}
+	if string(info.Data) != string(fileData) {
+		t.Error("Data mismatch")
+	}
+}
+
+func TestDownloadFromURL_423AutoRetrySuccess(t *testing.T) {
+	// DownloadFromURL should also auto-retry 423 via RequestURL → RequestURLWithRetry.
+	fileData := []byte("url-scanned content")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(423)
+			w.Write([]byte(`{"message":"scanning"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Content-Disposition", `attachment; filename="photo.png"`)
+		w.WriteHeader(http.StatusOK)
+		w.Write(fileData)
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 3)
+	info, err := cc.DownloadFromURL(server.URL + "/v1/contents/scan-url-id")
+	if err != nil {
+		t.Fatalf("DownloadFromURL should have succeeded after retry: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+	if string(info.Data) != string(fileData) {
+		t.Error("Data mismatch")
+	}
+	if info.ContentType != "image/png" {
+		t.Errorf("Expected image/png, got %s", info.ContentType)
+	}
+}
+
+func TestDownloadFromURLWithOptions_423AutoRetry(t *testing.T) {
+	// DownloadFromURLWithOptions with AllowUnscannable also retries on 423.
+	fileData := []byte("encrypted but scanned")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(423)
+			w.Write([]byte(`{"message":"scanning"}`))
+			return
+		}
+		// Verify allow=unscannable is still present on retry
+		if r.URL.Query().Get("allow") != "unscannable" {
+			t.Error("Expected allow=unscannable query param on retried request")
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fileData)
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 3)
+	opts := &DownloadOptions{AllowUnscannable: true}
+	info, err := cc.DownloadFromURLWithOptions(server.URL+"/v1/contents/enc-id", opts)
+	if err != nil {
+		t.Fatalf("DownloadFromURLWithOptions should have succeeded: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("Expected 3 attempts, got %d", attempts)
+	}
+	if string(info.Data) != string(fileData) {
+		t.Error("Data mismatch")
+	}
+}
+
+func TestDownloadWithOptions_423AutoRetry(t *testing.T) {
+	// DownloadWithOptions (path-based) also retries on 423.
+	fileData := []byte("safe after scan")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(423)
+			w.Write([]byte(`{"message":"scanning"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.WriteHeader(http.StatusOK)
+		w.Write(fileData)
+	}))
+	defer server.Close()
+
+	cc := newTestClientWithRetries(t, server, 2)
+	info, err := cc.DownloadWithOptions("scan-id", &DownloadOptions{AllowUnscannable: true})
+	if err != nil {
+		t.Fatalf("DownloadWithOptions should have succeeded: %v", err)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+	if info.ContentType != "application/pdf" {
+		t.Errorf("Expected application/pdf, got %s", info.ContentType)
 	}
 }
