@@ -251,7 +251,9 @@ func (ab *AudioBridge) HandleSignaling(transport SignalingTransport) error {
 			Candidate: candidateJSON,
 		}
 		msgBytes, _ := json.Marshal(msg)
-		transport.WriteMessage(msgBytes)
+		if err := transport.WriteMessage(msgBytes); err != nil {
+			log.Printf("AudioBridge: failed to send ICE candidate: %v", err)
+		}
 	})
 
 	pc := ab.pc

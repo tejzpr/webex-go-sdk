@@ -348,7 +348,7 @@ func TestDownloadAudio(t *testing.T) {
 			w.Header().Set("Content-Type", "audio/mpeg")
 			w.Header().Set("Content-Disposition", `attachment; filename="audio.mp3"`)
 			w.WriteHeader(http.StatusOK)
-			w.Write(audioContent)
+			_, _ = w.Write(audioContent)
 		} else {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -396,7 +396,7 @@ func TestDownloadRecording(t *testing.T) {
 		} else if r.URL.Path == "/download/video.mp4" {
 			w.Header().Set("Content-Type", "video/mp4")
 			w.WriteHeader(http.StatusOK)
-			w.Write(videoContent)
+			_, _ = w.Write(videoContent)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

@@ -337,7 +337,7 @@ func TestLine(t *testing.T) {
 		}
 
 		// Cleanup
-		line.Deregister()
+		_ = line.Deregister()
 	})
 
 	t.Run("Register failure falls back to backup", func(t *testing.T) {
@@ -369,7 +369,7 @@ func TestLine(t *testing.T) {
 			t.Error("Expected line to be registered via backup")
 		}
 
-		line.Deregister()
+		_ = line.Deregister()
 	})
 
 	t.Run("Register all servers fail", func(t *testing.T) {
@@ -412,7 +412,9 @@ func TestLine(t *testing.T) {
 		line := NewLine(core, nil, &LineConfig{
 			PrimaryMobiusURLs: []string{server.URL + "/"},
 		})
-		line.Register()
+		if err := line.Register(); err != nil {
+			t.Fatalf("Register failed: %v", err)
+		}
 
 		if err := line.Deregister(); err != nil {
 			t.Fatalf("Unexpected error: %v", err)
@@ -443,14 +445,16 @@ func TestLine(t *testing.T) {
 		line := NewLine(core, nil, &LineConfig{
 			PrimaryMobiusURLs: []string{server.URL + "/"},
 		})
-		line.Register()
+		if err := line.Register(); err != nil {
+			t.Fatalf("Register failed: %v", err)
+		}
 
 		// Second register should be no-op
 		if err := line.Register(); err != nil {
 			t.Fatalf("Unexpected error on second register: %v", err)
 		}
 
-		line.Deregister()
+		_ = line.Deregister()
 	})
 
 	t.Run("GetDeviceInfo", func(t *testing.T) {
@@ -467,8 +471,10 @@ func TestLine(t *testing.T) {
 		line := NewLine(core, nil, &LineConfig{
 			PrimaryMobiusURLs: []string{server.URL + "/"},
 		})
-		line.Register()
-		defer line.Deregister()
+		if err := line.Register(); err != nil {
+			t.Fatalf("Register failed: %v", err)
+		}
+		defer func() { _ = line.Deregister() }()
 
 		info := line.GetDeviceInfo()
 		if info == nil {
@@ -842,7 +848,7 @@ func TestCallingClient(t *testing.T) {
 			t.Errorf("Expected 1 line, got %d", len(lines))
 		}
 
-		cc.Shutdown()
+		_ = cc.Shutdown()
 	})
 
 	t.Run("MakeCall with nil line", func(t *testing.T) {
@@ -942,7 +948,7 @@ func TestCallingClient(t *testing.T) {
 			t.Errorf("Expected 1 active call, got %d", len(calls))
 		}
 
-		cc.Shutdown()
+		_ = cc.Shutdown()
 	})
 
 	t.Run("Shutdown", func(t *testing.T) {

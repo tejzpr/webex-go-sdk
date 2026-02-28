@@ -775,7 +775,7 @@ func TestCreate_RemoteFileAttachment(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(Message{
+		_ = json.NewEncoder(w).Encode(Message{
 			ID:     "msg-1",
 			RoomID: msg.RoomID,
 			Text:   msg.Text,

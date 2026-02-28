@@ -400,8 +400,12 @@ func TestWrapUnwrapWithSharedSecret(t *testing.T) {
 func TestUnwrapWithWrongSecret(t *testing.T) {
 	secret1 := make([]byte, 32)
 	secret2 := make([]byte, 32)
-	rand.Read(secret1)
-	rand.Read(secret2)
+	if _, err := rand.Read(secret1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rand.Read(secret2); err != nil {
+		t.Fatal(err)
+	}
 
 	wrapped, err := wrapWithSharedSecret([]byte("test data"), secret1, "")
 	if err != nil {
@@ -778,7 +782,9 @@ func TestProcessKMSMessages(t *testing.T) {
 
 	// Create a shared secret and ECDH context
 	sharedSecret := make([]byte, 32)
-	rand.Read(sharedSecret)
+	if _, err := rand.Read(sharedSecret); err != nil {
+		t.Fatal(err)
+	}
 
 	clientPriv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	ecdhPriv, _ := clientPriv.ECDH()

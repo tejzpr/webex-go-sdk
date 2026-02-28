@@ -279,9 +279,11 @@ func newTestPeopleServer(t *testing.T, people []Person) (*httptest.Server, *webe
 				result = []Person{}
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(struct {
+			if err := json.NewEncoder(w).Encode(struct {
 				Items []Person `json:"items"`
-			}{Items: result})
+			}{Items: result}); err != nil {
+				t.Logf("Failed to encode response: %v", err)
+			}
 			return
 		}
 
@@ -385,7 +387,7 @@ func TestBatchRequest_NotFound(t *testing.T) {
 func TestBatchRequest_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"message":"internal error"}`))
+		_, _ = w.Write([]byte(`{"message":"internal error"}`))
 	}))
 	defer server.Close()
 

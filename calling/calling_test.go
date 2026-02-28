@@ -259,7 +259,10 @@ func TestCallSettingsSetDND(t *testing.T) {
 			t.Errorf("Expected PUT, got %s", r.Method)
 		}
 		var body ToggleSetting
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		if !body.Enabled {
 			t.Error("Expected enabled=true")
 		}
@@ -707,7 +710,10 @@ func TestContactsCreateContactGroup(t *testing.T) {
 			DisplayName string `json:"displayName"`
 			GroupType   string `json:"groupType"`
 		}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		if body.DisplayName != "My Group" {
 			t.Errorf("Expected displayName 'My Group', got %q", body.DisplayName)
 		}

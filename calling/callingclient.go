@@ -765,7 +765,9 @@ func (cc *CallingClient) DisconnectMercury() {
 	cc.mu.Unlock()
 
 	if merc != nil {
-		merc.Disconnect()
+		if err := merc.Disconnect(); err != nil {
+			log.Printf("CallingClient: Mercury disconnect error: %v", err)
+		}
 		log.Println("CallingClient: Mercury disconnected")
 	}
 }
