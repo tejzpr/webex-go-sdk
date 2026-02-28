@@ -281,6 +281,28 @@ func main() {
 }
 ```
 
+## Error Handling
+
+All methods return structured errors from the `webexsdk` package. Use the convenience functions to check error types:
+
+```go
+membership, err := client.Memberships().Get("MEMBERSHIP_ID")
+if err != nil {
+    switch {
+    case webexsdk.IsNotFound(err):
+        log.Println("Membership not found")
+    case webexsdk.IsAuthError(err):
+        log.Println("Invalid or expired access token")
+    case webexsdk.IsRateLimited(err):
+        log.Println("Rate limited — SDK retries automatically")
+    default:
+        log.Printf("Error: %v", err)
+    }
+}
+```
+
+See [webexsdk/Readme.md](../webexsdk/Readme.md) for the full error type reference.
+
 ## Related Resources
 
 - [Webex Memberships API Documentation](https://developer.webex.com/docs/api/v1/memberships)

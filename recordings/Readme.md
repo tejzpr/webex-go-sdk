@@ -30,13 +30,13 @@ import (
 
 ```go
 // Create a new Webex client with your access token
-client, err := webexsdk.NewClient("your-access-token", nil)
+client, err := webex.NewClient("your-access-token", nil)
 if err != nil {
     log.Fatalf("Failed to create client: %v", err)
 }
 
-// Create the Recordings client
-recordingsClient := recordings.New(client, nil)
+// Access the recordings client
+recordingsClient := client.Recordings()
 ```
 
 ### Listing Recordings
@@ -221,6 +221,28 @@ type ListOptions struct {
 - **Audio download** provides an MP3 file extracted from the meeting recording.
 - Recording downloads can be large (hundreds of MB for long meetings). Consider streaming via the URL rather than loading into memory for large files.
 - Refer to the [Meetings API Scopes](https://developer.webex.com/docs/meetings#user-level-authentication-and-scopes) for the required authentication scopes.
+
+## Error Handling
+
+All methods return structured errors from the `webexsdk` package. Use the convenience functions to check error types:
+
+```go
+recording, err := recordingsClient.Get("RECORDING_ID")
+if err != nil {
+    switch {
+    case webexsdk.IsNotFound(err):
+        log.Println("Recording not found")
+    case webexsdk.IsAuthError(err):
+        log.Println("Invalid or expired access token")
+    case webexsdk.IsRateLimited(err):
+        log.Println("Rate limited — SDK retries automatically")
+    default:
+        log.Printf("Error: %v", err)
+    }
+}
+```
+
+See [webexsdk/Readme.md](../webexsdk/Readme.md) for the full error type reference.
 
 ## Related Resources
 

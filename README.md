@@ -76,6 +76,8 @@ func main() {
 - **Room Tabs** - Manage tabs in Webex rooms
 - **Meetings** - Create, list, update, and delete Webex meetings
 - **Meeting Transcripts** - List, download, and manage meeting transcripts and snippets
+- **Recordings** - List, get, download (audio/video/transcript), and delete meeting recordings
+- **Contents** - Download file attachments with anti-malware scanning support
 - **Calling** - Call history, call settings (DND, call waiting, call forwarding, voicemail), contacts
 
 ### WebSocket APIs
@@ -91,6 +93,94 @@ func main() {
 - **Call Control** - Dial, answer, hold, resume, transfer (blind/consult), DTMF, mute/unmute
 - **SignalingTransport** - Transport-agnostic WebRTC signaling interface (WebSocket, gRPC, etc.)
 - **Address Normalization** - Phone number sanitization and SIP/tel URI handling
+
+## Configuration
+
+Customise client behaviour by passing a `webexsdk.Config`:
+
+```go
+import (
+    "time"
+
+    "github.com/WebexCommunity/webex-go-sdk/v2"
+    "github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+)
+
+client, err := webex.NewClient(accessToken, &webexsdk.Config{
+    BaseURL:        "https://webexapis.com/v1", // Default
+    Timeout:        30 * time.Second,           // HTTP client timeout
+    MaxRetries:     5,                          // Default: 3 (0 disables retries)
+    RetryBaseDelay: 2 * time.Second,            // Default: 1s (exponential backoff)
+})
+```
+
+See [webexsdk/Readme.md](./webexsdk/Readme.md) for all configuration fields.
+
+## Automatic Retry & Resilience
+
+The SDK automatically retries requests that receive transient error responses:
+
+| Status | Meaning | Retry Behaviour |
+|--------|---------|------------------|
+| 429 | Too Many Requests | Respects `Retry-After` header |
+| 423 | Locked (file scanning) | Respects `Retry-After` header |
+| 502 | Bad Gateway | Exponential backoff |
+| 503 | Service Unavailable | Exponential backoff |
+| 504 | Gateway Timeout | Exponential backoff |
+
+Backoff formula: `RetryBaseDelay × 2^attempt` (e.g., 1s → 2s → 4s).
+
+All request methods (`Request`, `RequestURL`, `RequestMultipart`) include retry support.
+
+## Error Handling
+
+API errors are returned as structured types from the `webexsdk` package. Use convenience functions to inspect error types:
+
+```go
+room, err := client.Rooms().Get("invalid-id")
+if err != nil {
+    switch {
+    case webexsdk.IsNotFound(err):
+        log.Println("Room not found")
+    case webexsdk.IsAuthError(err):
+        log.Println("Invalid access token")
+    case webexsdk.IsRateLimited(err):
+        log.Println("Rate limited — the SDK already retried")
+    case webexsdk.IsServerError(err):
+        log.Println("Server error — the SDK already retried")
+    default:
+        log.Printf("Error: %v", err)
+    }
+}
+```
+
+Available checkers: `IsAuthError`, `IsForbidden`, `IsNotFound`, `IsConflict`, `IsGone`, `IsLocked`, `IsPreconditionRequired`, `IsRateLimited`, `IsServerError`.
+
+See [webexsdk/Readme.md](./webexsdk/Readme.md) for the full error type reference.
+
+## Pagination
+
+List endpoints return paginated results. Each module's `List` method returns a page with `HasNext`/`Next()` support:
+
+```go
+page, err := client.Rooms().List(&rooms.ListOptions{Max: 50})
+if err != nil {
+    log.Fatal(err)
+}
+
+for {
+    for _, room := range page.Items {
+        fmt.Println(room.Title)
+    }
+    if !page.HasNext() {
+        break
+    }
+    page, err = page.Next()
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
 
 ## Examples
 
