@@ -247,14 +247,14 @@ func TestServerError_ErrorsAs(t *testing.T) {
 
 func TestNewAPIError_Returns_CorrectSubtype(t *testing.T) {
 	tests := []struct {
-		name         string
-		statusCode   int
-		body         string
-		retryAfter   string
-		expectType   string
-		expectMsg    string
-		expectTrkID  string
-		expectRetry  time.Duration
+		name        string
+		statusCode  int
+		body        string
+		retryAfter  string
+		expectType  string
+		expectMsg   string
+		expectTrkID string
+		expectRetry time.Duration
 	}{
 		{
 			name:        "400 Bad Request",
@@ -297,11 +297,11 @@ func TestNewAPIError_Returns_CorrectSubtype(t *testing.T) {
 			expectTrkID: "TRK_409",
 		},
 		{
-			name:        "410 Gone",
-			statusCode:  410,
-			body:        `{"message":"infected file removed"}`,
-			expectType:  "*webexsdk.GoneError",
-			expectMsg:   "infected file removed",
+			name:       "410 Gone",
+			statusCode: 410,
+			body:       `{"message":"infected file removed"}`,
+			expectType: "*webexsdk.GoneError",
+			expectMsg:  "infected file removed",
 		},
 		{
 			name:        "423 Locked with Retry-After",
@@ -313,11 +313,11 @@ func TestNewAPIError_Returns_CorrectSubtype(t *testing.T) {
 			expectRetry: 60 * time.Second,
 		},
 		{
-			name:        "428 Precondition Required",
-			statusCode:  428,
-			body:        `{"message":"unscannable file"}`,
-			expectType:  "*webexsdk.PreconditionRequiredError",
-			expectMsg:   "unscannable file",
+			name:       "428 Precondition Required",
+			statusCode: 428,
+			body:       `{"message":"unscannable file"}`,
+			expectType: "*webexsdk.PreconditionRequiredError",
+			expectMsg:  "unscannable file",
 		},
 		{
 			name:        "429 Too Many Requests",
@@ -329,53 +329,53 @@ func TestNewAPIError_Returns_CorrectSubtype(t *testing.T) {
 			expectRetry: 3600 * time.Second,
 		},
 		{
-			name:        "500 Internal Server Error",
-			statusCode:  500,
-			body:        `{"message":"internal error"}`,
-			expectType:  "*webexsdk.ServerError",
-			expectMsg:   "internal error",
+			name:       "500 Internal Server Error",
+			statusCode: 500,
+			body:       `{"message":"internal error"}`,
+			expectType: "*webexsdk.ServerError",
+			expectMsg:  "internal error",
 		},
 		{
-			name:        "502 Bad Gateway",
-			statusCode:  502,
-			body:        `{"message":"bad gateway"}`,
-			expectType:  "*webexsdk.ServerError",
-			expectMsg:   "bad gateway",
+			name:       "502 Bad Gateway",
+			statusCode: 502,
+			body:       `{"message":"bad gateway"}`,
+			expectType: "*webexsdk.ServerError",
+			expectMsg:  "bad gateway",
 		},
 		{
-			name:        "503 Service Unavailable",
-			statusCode:  503,
-			body:        `{"message":"unavailable"}`,
-			expectType:  "*webexsdk.ServerError",
-			expectMsg:   "unavailable",
+			name:       "503 Service Unavailable",
+			statusCode: 503,
+			body:       `{"message":"unavailable"}`,
+			expectType: "*webexsdk.ServerError",
+			expectMsg:  "unavailable",
 		},
 		{
-			name:        "504 Gateway Timeout",
-			statusCode:  504,
-			body:        `{"message":"timeout"}`,
-			expectType:  "*webexsdk.ServerError",
-			expectMsg:   "timeout",
+			name:       "504 Gateway Timeout",
+			statusCode: 504,
+			body:       `{"message":"timeout"}`,
+			expectType: "*webexsdk.ServerError",
+			expectMsg:  "timeout",
 		},
 		{
-			name:        "415 Unsupported Media Type (generic)",
-			statusCode:  415,
-			body:        `{"message":"unsupported media type"}`,
-			expectType:  "*webexsdk.APIError",
-			expectMsg:   "unsupported media type",
+			name:       "415 Unsupported Media Type (generic)",
+			statusCode: 415,
+			body:       `{"message":"unsupported media type"}`,
+			expectType: "*webexsdk.APIError",
+			expectMsg:  "unsupported media type",
 		},
 		{
-			name:        "Non-JSON body",
-			statusCode:  500,
-			body:        `Internal Server Error`,
-			expectType:  "*webexsdk.ServerError",
-			expectMsg:   "", // Message field empty, RawBody has the text
+			name:       "Non-JSON body",
+			statusCode: 500,
+			body:       `Internal Server Error`,
+			expectType: "*webexsdk.ServerError",
+			expectMsg:  "", // Message field empty, RawBody has the text
 		},
 		{
-			name:        "Empty body",
-			statusCode:  400,
-			body:        ``,
-			expectType:  "*webexsdk.APIError",
-			expectMsg:   "",
+			name:       "Empty body",
+			statusCode: 400,
+			body:       ``,
+			expectType: "*webexsdk.APIError",
+			expectMsg:  "",
 		},
 	}
 

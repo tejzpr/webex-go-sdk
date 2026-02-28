@@ -196,9 +196,9 @@ func NewAPIError(resp *http.Response, body []byte) error {
 	case http.StatusTooManyRequests: // 429
 		return &RateLimitError{APIError: base}
 	case http.StatusInternalServerError, // 500
-		http.StatusBadGateway,       // 502
+		http.StatusBadGateway,         // 502
 		http.StatusServiceUnavailable, // 503
-		http.StatusGatewayTimeout:   // 504
+		http.StatusGatewayTimeout:     // 504
 		return &ServerError{APIError: base}
 	default:
 		return base

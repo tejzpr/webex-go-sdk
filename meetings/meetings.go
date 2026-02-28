@@ -229,20 +229,20 @@ type Invitee struct {
 
 // Participant represents a meeting participant
 type Participant struct {
-	ID             string              `json:"id,omitempty"`
-	OrgID          string              `json:"orgId,omitempty"`
-	Host           bool                `json:"host,omitempty"`
-	CoHost         bool                `json:"coHost,omitempty"`
-	SpaceModerator bool                `json:"spaceModerator,omitempty"`
-	Email          string              `json:"email,omitempty"`
-	DisplayName    string              `json:"displayName,omitempty"`
-	Invitee        bool                `json:"invitee,omitempty"`
-	Muted          bool                `json:"muted,omitempty"`
-	State          string              `json:"state,omitempty"`
-	JoinedTime     string              `json:"joinedTime,omitempty"`
-	LeftTime       string              `json:"leftTime,omitempty"`
-	MeetingID      string              `json:"meetingId,omitempty"`
-	HostEmail      string              `json:"hostEmail,omitempty"`
+	ID             string                  `json:"id,omitempty"`
+	OrgID          string                  `json:"orgId,omitempty"`
+	Host           bool                    `json:"host,omitempty"`
+	CoHost         bool                    `json:"coHost,omitempty"`
+	SpaceModerator bool                    `json:"spaceModerator,omitempty"`
+	Email          string                  `json:"email,omitempty"`
+	DisplayName    string                  `json:"displayName,omitempty"`
+	Invitee        bool                    `json:"invitee,omitempty"`
+	Muted          bool                    `json:"muted,omitempty"`
+	State          string                  `json:"state,omitempty"`
+	JoinedTime     string                  `json:"joinedTime,omitempty"`
+	LeftTime       string                  `json:"leftTime,omitempty"`
+	MeetingID      string                  `json:"meetingId,omitempty"`
+	HostEmail      string                  `json:"hostEmail,omitempty"`
 	Devices        []ParticipantDevice     `json:"devices,omitempty"`
 	Errors         webexsdk.ResourceErrors `json:"errors,omitempty"`
 }

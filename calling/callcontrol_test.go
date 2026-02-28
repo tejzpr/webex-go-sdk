@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pion/webrtc/v4"
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+	"github.com/pion/webrtc/v4"
 )
 
 // ---- EventEmitter Tests ----

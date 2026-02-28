@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+	"github.com/gorilla/websocket"
 )
 
 // Config holds the configuration for the Mercury plugin

@@ -16,9 +16,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/WebexCommunity/webex-go-sdk/v2/mercury"
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+	"github.com/google/uuid"
 )
 
 // CallingClient is the main orchestrator for Webex Calling call control.

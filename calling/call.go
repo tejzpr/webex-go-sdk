@@ -15,9 +15,9 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
-	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
 )
 
 // Call represents an active or pending call with full call control.

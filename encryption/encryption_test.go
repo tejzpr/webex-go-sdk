@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v4"
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+	jose "github.com/go-jose/go-jose/v4"
 )
 
 // --- Helper Functions ---
@@ -351,7 +351,7 @@ func TestCacheKey(t *testing.T) {
 
 func TestCacheKeyNil(t *testing.T) {
 	client := newTestClient(t)
-	client.CacheKey(nil) // Should not panic
+	client.CacheKey(nil)                       // Should not panic
 	client.CacheKey(&Key{URI: "", JWK: JWK{}}) // Empty URI, should not cache
 
 	client.mu.RLock()
@@ -910,9 +910,9 @@ func TestPendingRequestMechanism(t *testing.T) {
 
 func TestKmsClusterFromDomain(t *testing.T) {
 	tests := []struct {
-		domain  string
-		def     string
-		want    string
+		domain string
+		def    string
+		want   string
 	}{
 		{"kms-a.wbx2.com", "kms-a.wbx2.com", "kms-a.wbx2.com"},
 		{"kms-cisco.wbx2.com", "kms-a.wbx2.com", "kms-cisco.wbx2.com"},

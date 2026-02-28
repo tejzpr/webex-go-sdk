@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	jose "github.com/go-jose/go-jose/v4"
 	"github.com/WebexCommunity/webex-go-sdk/v2/webexsdk"
+	jose "github.com/go-jose/go-jose/v4"
 )
 
 const (

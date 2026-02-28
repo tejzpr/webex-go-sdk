@@ -210,7 +210,7 @@ func TestCallSettingsGetCallWaiting(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enabled":          true,
+			"enabled":           true,
 			"ringSplashEnabled": false,
 		})
 	}))
