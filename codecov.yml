@@ -1,0 +1,12 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%    # allow 2% drop without failing
+    patch:
+      default:
+        target: 80%      # new code should be ≥80% covered
+ignore:
+  - "examples/**"
+  - "**/*_functional_test.go"

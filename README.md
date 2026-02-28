@@ -4,14 +4,13 @@
 
 A comprehensive, lightweight Go SDK for Cisco Webex API
 
-[Go Reference](https://pkg.go.dev/github.com/WebexCommunity/webex-go-sdk/v2)
-[License: MPL 2.0](https://opensource.org/licenses/MPL-2.0)
-[Open Source](https://github.com/WebexCommunity/webex-go-sdk)
-[Go Tests](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/go-test.yml)
-[Lint](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/golangci-lint.yml)
-[Codecov](https://codecov.io/gh/tejzpr/webex-go-sdk)
-[Release](https://github.com/WebexCommunity/webex-go-sdk/releases/latest)
-[Go Report Card](https://goreportcard.com/report/github.com/WebexCommunity/webex-go-sdk/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/WebexCommunity/webex-go-sdk/v2.svg)](https://pkg.go.dev/github.com/WebexCommunity/webex-go-sdk/v2)
+[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![Go Tests](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/go-test.yml/badge.svg)](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/go-test.yml)
+[![Lint](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/WebexCommunity/webex-go-sdk/actions/workflows/golangci-lint.yml)
+[![codecov](https://codecov.io/gh/WebexCommunity/webex-go-sdk/graph/badge.svg)](https://codecov.io/gh/WebexCommunity/webex-go-sdk)
+[![Release](https://img.shields.io/github/v/release/WebexCommunity/webex-go-sdk)](https://github.com/WebexCommunity/webex-go-sdk/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/WebexCommunity/webex-go-sdk/v2)](https://goreportcard.com/report/github.com/WebexCommunity/webex-go-sdk/v2)
 
 ## Implementation Status
 
