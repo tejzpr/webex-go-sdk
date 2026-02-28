@@ -19,39 +19,41 @@ import (
 
 // Transcript represents a Webex meeting transcript
 type Transcript struct {
-	ID                 string `json:"id,omitempty"`
-	MeetingID          string `json:"meetingId,omitempty"`
-	MeetingTopic       string `json:"meetingTopic,omitempty"`
-	SiteURL            string `json:"siteUrl,omitempty"`
-	ScheduledMeetingID string `json:"scheduledMeetingId,omitempty"`
-	MeetingSeriesID    string `json:"meetingSeriesId,omitempty"`
-	HostUserID         string `json:"hostUserId,omitempty"`
-	HostEmail          string `json:"hostEmail,omitempty"`
-	StartTime          string `json:"startTime,omitempty"`
-	EndTime            string `json:"endTime,omitempty"`
-	Duration           int    `json:"duration,omitempty"`
-	Status             string `json:"status,omitempty"`
-	VttDownloadLink    string `json:"vttDownloadLink,omitempty"`
-	TxtDownloadLink    string `json:"txtDownloadLink,omitempty"`
-	Created            string `json:"created,omitempty"`
-	Updated            string `json:"updated,omitempty"`
+	ID                 string                  `json:"id,omitempty"`
+	MeetingID          string                  `json:"meetingId,omitempty"`
+	MeetingTopic       string                  `json:"meetingTopic,omitempty"`
+	SiteURL            string                  `json:"siteUrl,omitempty"`
+	ScheduledMeetingID string                  `json:"scheduledMeetingId,omitempty"`
+	MeetingSeriesID    string                  `json:"meetingSeriesId,omitempty"`
+	HostUserID         string                  `json:"hostUserId,omitempty"`
+	HostEmail          string                  `json:"hostEmail,omitempty"`
+	StartTime          string                  `json:"startTime,omitempty"`
+	EndTime            string                  `json:"endTime,omitempty"`
+	Duration           int                     `json:"duration,omitempty"`
+	Status             string                  `json:"status,omitempty"`
+	VttDownloadLink    string                  `json:"vttDownloadLink,omitempty"`
+	TxtDownloadLink    string                  `json:"txtDownloadLink,omitempty"`
+	Created            string                  `json:"created,omitempty"`
+	Updated            string                  `json:"updated,omitempty"`
+	Errors             webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // Snippet represents a short segment of a transcript spoken by a specific participant
 type Snippet struct {
-	ID                  string  `json:"id,omitempty"`
-	TranscriptID        string  `json:"transcriptId,omitempty"`
-	Text                string  `json:"text,omitempty"`
-	PersonName          string  `json:"personName,omitempty"`
-	PersonEmail         string  `json:"personEmail,omitempty"`
-	PeopleID            string  `json:"peopleId,omitempty"`
-	StartTime           string  `json:"startTime,omitempty"`
-	EndTime             string  `json:"endTime,omitempty"`
-	Duration            float64 `json:"duration,omitempty"`
-	DurationMillisecond int     `json:"durationMillisecond,omitempty"`
-	OffsetMillisecond   int     `json:"offsetMillisecond,omitempty"`
-	Language            string  `json:"language,omitempty"`
-	Confidence          float64 `json:"confidence,omitempty"`
+	ID                  string                  `json:"id,omitempty"`
+	TranscriptID        string                  `json:"transcriptId,omitempty"`
+	Text                string                  `json:"text,omitempty"`
+	PersonName          string                  `json:"personName,omitempty"`
+	PersonEmail         string                  `json:"personEmail,omitempty"`
+	PeopleID            string                  `json:"peopleId,omitempty"`
+	StartTime           string                  `json:"startTime,omitempty"`
+	EndTime             string                  `json:"endTime,omitempty"`
+	Duration            float64                 `json:"duration,omitempty"`
+	DurationMillisecond int                     `json:"durationMillisecond,omitempty"`
+	OffsetMillisecond   int                     `json:"offsetMillisecond,omitempty"`
+	Language            string                  `json:"language,omitempty"`
+	Confidence          float64                 `json:"confidence,omitempty"`
+	Errors              webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing transcripts

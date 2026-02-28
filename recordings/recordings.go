@@ -38,6 +38,7 @@ type Recording struct {
 	ServiceType                  string                  `json:"serviceType,omitempty"`
 	Status                       string                  `json:"status,omitempty"`
 	IntegrationTags              []string                `json:"integrationTags,omitempty"`
+	Errors                       webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // TemporaryDownloadLinks contains time-limited direct download URLs for

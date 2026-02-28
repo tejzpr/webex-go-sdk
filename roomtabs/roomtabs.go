@@ -18,13 +18,14 @@ import (
 
 // RoomTab represents a Webex room tab
 type RoomTab struct {
-	ID          string     `json:"id,omitempty"`
-	RoomID      string     `json:"roomId,omitempty"`
-	RoomType    string     `json:"roomType,omitempty"`
-	DisplayName string     `json:"displayName,omitempty"`
-	ContentURL  string     `json:"contentUrl,omitempty"`
-	CreatorID   string     `json:"creatorId,omitempty"`
-	Created     *time.Time `json:"created,omitempty"`
+	ID          string                  `json:"id,omitempty"`
+	RoomID      string                  `json:"roomId,omitempty"`
+	RoomType    string                  `json:"roomType,omitempty"`
+	DisplayName string                  `json:"displayName,omitempty"`
+	ContentURL  string                  `json:"contentUrl,omitempty"`
+	CreatorID   string                  `json:"creatorId,omitempty"`
+	Created     *time.Time              `json:"created,omitempty"`
+	Errors      webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing room tabs

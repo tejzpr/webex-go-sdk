@@ -18,19 +18,20 @@ import (
 
 // Membership represents a Webex membership
 type Membership struct {
-	ID                string     `json:"id,omitempty"`
-	RoomID            string     `json:"roomId,omitempty"`
-	PersonID          string     `json:"personId,omitempty"`
-	PersonEmail       string     `json:"personEmail,omitempty"`
-	PersonDisplayName string     `json:"personDisplayName,omitempty"`
-	PersonOrgID       string     `json:"personOrgId,omitempty"`
-	IsModerator       bool       `json:"isModerator,omitempty"`
-	IsMonitor         bool       `json:"isMonitor,omitempty"`
-	IsRoomHidden      bool       `json:"isRoomHidden,omitempty"`
-	Created           *time.Time `json:"created,omitempty"`
-	RoomType          string     `json:"roomType,omitempty"`
-	LastSeenID        string     `json:"lastSeenId,omitempty"`
-	LastSeenDate      *time.Time `json:"lastSeenDate,omitempty"`
+	ID                string                  `json:"id,omitempty"`
+	RoomID            string                  `json:"roomId,omitempty"`
+	PersonID          string                  `json:"personId,omitempty"`
+	PersonEmail       string                  `json:"personEmail,omitempty"`
+	PersonDisplayName string                  `json:"personDisplayName,omitempty"`
+	PersonOrgID       string                  `json:"personOrgId,omitempty"`
+	IsModerator       bool                    `json:"isModerator,omitempty"`
+	IsMonitor         bool                    `json:"isMonitor,omitempty"`
+	IsRoomHidden      bool                    `json:"isRoomHidden,omitempty"`
+	Created           *time.Time              `json:"created,omitempty"`
+	RoomType          string                  `json:"roomType,omitempty"`
+	LastSeenID        string                  `json:"lastSeenId,omitempty"`
+	LastSeenDate      *time.Time              `json:"lastSeenDate,omitempty"`
+	Errors            webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing memberships

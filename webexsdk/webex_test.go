@@ -7,6 +7,7 @@
 package webexsdk
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -296,42 +297,32 @@ func TestParseResponse(t *testing.T) {
 }
 
 func TestPageNavigation(t *testing.T) {
-	// Create test server
-	pageCount := 0
+	// Use var to avoid circular reference in closure
+	var serverURL string
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		// Simulate different pages based on path
 		switch r.URL.Path {
 		case "/items":
-			// First page
-			fmt.Fprintln(w, `{
-				"items": [{"id": "item1"}, {"id": "item2"}],
-				"nextPage": "next-page",
-				"prevPage": ""
-			}`)
+			// First page — Link header with next only
+			w.Header().Set("Link", `<`+serverURL+`/next-page>; rel="next"`)
+			fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
 		case "/next-page":
-			// Second page
-			fmt.Fprintln(w, `{
-				"items": [{"id": "item3"}, {"id": "item4"}],
-				"nextPage": "",
-				"prevPage": "prev-page"
-			}`)
+			// Second page — Link header with prev only
+			w.Header().Set("Link", `<`+serverURL+`/prev-page>; rel="prev"`)
+			fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
 		case "/prev-page":
-			// Back to first page
-			fmt.Fprintln(w, `{
-				"items": [{"id": "item1"}, {"id": "item2"}],
-				"nextPage": "next-page",
-				"prevPage": ""
-			}`)
+			// Back to first page — Link header with next only
+			w.Header().Set("Link", `<`+serverURL+`/next-page>; rel="next"`)
+			fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-
-		pageCount++
 	}))
 	defer server.Close()
+	serverURL = server.URL
 
 	// Create client
 	baseURL, _ := url.Parse(server.URL)
@@ -522,4 +513,295 @@ func (m *mockReadCloser) Read(p []byte) (n int, err error) {
 
 func (m *mockReadCloser) Close() error {
 	return nil
+}
+
+// --- Retry tests ---
+
+func TestRequest_Retries429(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprintln(w, `{"message":"rate limited"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"status":"ok"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+}
+
+func TestRequest_Retries502(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts <= 2 {
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprintln(w, `{"message":"bad gateway"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"status":"ok"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 3 {
+		t.Errorf("Expected 3 attempts, got %d", attempts)
+	}
+}
+
+func TestRequest_Retries423Locked(t *testing.T) {
+	// 423 Locked (anti-malware scanning) should be retried with Retry-After
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusLocked)
+			fmt.Fprintln(w, `{"message":"file is being scanned"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"status":"ok"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+}
+
+func TestRequest_NoRetryOn400(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintln(w, `{"message":"bad request"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", resp.StatusCode)
+	}
+	if attempts != 1 {
+		t.Errorf("Expected 1 attempt (no retry), got %d", attempts)
+	}
+}
+
+func TestRequest_NoRetryOn401(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintln(w, `{"message":"unauthorized"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if attempts != 1 {
+		t.Errorf("Expected 1 attempt (no retry for 401), got %d", attempts)
+	}
+}
+
+func TestRequest_ExhaustsRetries(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusServiceUnavailable)
+		fmt.Fprintln(w, `{"message":"unavailable"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     2,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodGet, "test", nil, nil)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("Expected 503, got %d", resp.StatusCode)
+	}
+	if attempts != 3 {
+		t.Errorf("Expected 3 attempts, got %d", attempts)
+	}
+}
+
+func TestRequest_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Header().Set("Retry-After", "300")
+		fmt.Fprintln(w, `{"message":"rate limited"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     5,
+		RetryBaseDelay: 10 * time.Second,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := client.RequestWithRetry(ctx, http.MethodGet, "test", nil, nil)
+	if err == nil {
+		t.Fatal("Expected error from context cancellation")
+	}
+}
+
+func TestRequestMultipart_Retries429(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprintln(w, `{"message":"rate limited"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{"id":"msg-123"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: 1 * time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	fields := []MultipartField{{Name: "roomId", Value: "room-1"}}
+	files := []MultipartFile{{FieldName: "files", FileName: "test.txt", Content: []byte("data")}}
+
+	resp, err := client.RequestMultipart("messages", fields, files)
+	if err != nil {
+		t.Fatalf("RequestMultipart failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
 }

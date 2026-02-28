@@ -18,15 +18,16 @@ import (
 
 // Webhook represents a Webex webhook
 type Webhook struct {
-	ID        string     `json:"id,omitempty"`
-	Name      string     `json:"name,omitempty"`
-	TargetURL string     `json:"targetUrl,omitempty"`
-	Resource  string     `json:"resource,omitempty"`
-	Event     string     `json:"event,omitempty"`
-	Filter    string     `json:"filter,omitempty"`
-	Secret    string     `json:"secret,omitempty"`
-	Status    string     `json:"status,omitempty"`
-	Created   *time.Time `json:"created,omitempty"`
+	ID        string                  `json:"id,omitempty"`
+	Name      string                  `json:"name,omitempty"`
+	TargetURL string                  `json:"targetUrl,omitempty"`
+	Resource  string                  `json:"resource,omitempty"`
+	Event     string                  `json:"event,omitempty"`
+	Filter    string                  `json:"filter,omitempty"`
+	Secret    string                  `json:"secret,omitempty"`
+	Status    string                  `json:"status,omitempty"`
+	Created   *time.Time              `json:"created,omitempty"`
+	Errors    webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing webhooks

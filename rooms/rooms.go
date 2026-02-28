@@ -18,14 +18,15 @@ import (
 
 // Room represents a Webex room
 type Room struct {
-	ID           string     `json:"id,omitempty"`
-	Title        string     `json:"title,omitempty"`
-	TeamID       string     `json:"teamId,omitempty"`
-	IsLocked     bool       `json:"isLocked,omitempty"`
-	Type         string     `json:"type,omitempty"`
-	CreatorID    string     `json:"creatorId,omitempty"`
-	Created      *time.Time `json:"created,omitempty"`
-	LastActivity *time.Time `json:"lastActivity,omitempty"`
+	ID           string                  `json:"id,omitempty"`
+	Title        string                  `json:"title,omitempty"`
+	TeamID       string                  `json:"teamId,omitempty"`
+	IsLocked     bool                    `json:"isLocked,omitempty"`
+	Type         string                  `json:"type,omitempty"`
+	CreatorID    string                  `json:"creatorId,omitempty"`
+	Created      *time.Time              `json:"created,omitempty"`
+	LastActivity *time.Time              `json:"lastActivity,omitempty"`
+	Errors       webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // RoomWithReadStatus represents a room with read status information

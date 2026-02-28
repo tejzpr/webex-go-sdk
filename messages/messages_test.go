@@ -756,3 +756,57 @@ func TestNewAdaptiveCard(t *testing.T) {
 		t.Error("Expected non-nil card content")
 	}
 }
+
+func TestCreate_RemoteFileAttachment(t *testing.T) {
+	// Per eval.md: remote file attachments use the files JSON parameter with a URL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg Message
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+			t.Fatalf("Failed to decode: %v", err)
+		}
+
+		// Verify files contains the remote URL
+		if len(msg.Files) != 1 {
+			t.Fatalf("Expected 1 file URL, got %d", len(msg.Files))
+		}
+		if msg.Files[0] != "http://www.example.com/images/media.png" {
+			t.Errorf("Expected remote URL, got %q", msg.Files[0])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(Message{
+			ID:     "msg-1",
+			RoomID: msg.RoomID,
+			Text:   msg.Text,
+			Files:  msg.Files,
+		})
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:    server.URL,
+		Timeout:    5 * time.Second,
+		HttpClient: server.Client(),
+	}
+	client, _ := webexsdk.NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	messagesPlugin := New(client, nil)
+	result, err := messagesPlugin.Create(&Message{
+		RoomID: "room-123",
+		Text:   "Check out this file",
+		Files:  []string{"http://www.example.com/images/media.png"},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if len(result.Files) != 1 {
+		t.Fatalf("Expected 1 file in response, got %d", len(result.Files))
+	}
+	if result.Files[0] != "http://www.example.com/images/media.png" {
+		t.Errorf("Expected file URL in response, got %q", result.Files[0])
+	}
+}

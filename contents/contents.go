@@ -26,6 +26,14 @@ type FileInfo struct {
 	Data []byte
 }
 
+// DownloadOptions configures file download behavior.
+type DownloadOptions struct {
+	// AllowUnscannable when true adds ?allow=unscannable to the request,
+	// enabling download of files that cannot be scanned for malware
+	// (e.g., encrypted files). The user assumes all risks.
+	AllowUnscannable bool
+}
+
 // Config holds the configuration for the Contents plugin.
 type Config struct{}
 
@@ -56,12 +64,30 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 // Download fetches a file attachment by its content ID.
 // The contentID is the Webex content identifier (the base64-encoded ID
 // found at the end of URLs like https://webexapis.com/v1/contents/{contentId}).
+//
+// Anti-malware behavior:
+//   - Returns *webexsdk.LockedError (423) if the file is being scanned.
+//     The SDK retry logic will automatically retry with Retry-After.
+//   - Returns *webexsdk.GoneError (410) if the file is infected.
+//   - Returns *webexsdk.PreconditionRequiredError (428) if the file is unscannable.
+//     Use DownloadWithOptions with AllowUnscannable=true to download such files.
 func (c *Client) Download(contentID string) (*FileInfo, error) {
+	return c.DownloadWithOptions(contentID, nil)
+}
+
+// DownloadWithOptions fetches a file attachment with configurable options.
+// When opts.AllowUnscannable is true, ?allow=unscannable is appended to bypass
+// the 428 Precondition Required response for unscannable (e.g., encrypted) files.
+func (c *Client) DownloadWithOptions(contentID string, opts *DownloadOptions) (*FileInfo, error) {
 	if contentID == "" {
 		return nil, fmt.Errorf("contentID is required")
 	}
 
 	path := fmt.Sprintf("contents/%s", contentID)
+	if opts != nil && opts.AllowUnscannable {
+		path += "?allow=unscannable"
+	}
+
 	resp, err := c.webexClient.Request(http.MethodGet, path, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching content: %w", err)
@@ -70,7 +96,7 @@ func (c *Client) Download(contentID string) (*FileInfo, error) {
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %d - %s", resp.StatusCode, string(body))
+		return nil, webexsdk.NewAPIError(resp, body)
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -89,19 +115,31 @@ func (c *Client) Download(contentID string) (*FileInfo, error) {
 // DownloadFromURL fetches a file attachment from a full Webex content URL.
 // This accepts the URLs directly from Message.Files (e.g.,
 // "https://webexapis.com/v1/contents/Y2lzY29...").
+//
+// Returns structured error types for anti-malware responses (see Download for details).
 func (c *Client) DownloadFromURL(contentURL string) (*FileInfo, error) {
+	return c.DownloadFromURLWithOptions(contentURL, nil)
+}
+
+// DownloadFromURLWithOptions fetches a file from a full URL with configurable options.
+// When opts.AllowUnscannable is true, ?allow=unscannable is appended to bypass
+// the 428 Precondition Required response for unscannable files.
+func (c *Client) DownloadFromURLWithOptions(contentURL string, opts *DownloadOptions) (*FileInfo, error) {
 	if contentURL == "" {
 		return nil, fmt.Errorf("contentURL is required")
 	}
 
-	// Make a direct HTTP request to the full URL with auth
-	req, err := http.NewRequest(http.MethodGet, contentURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+	requestURL := contentURL
+	if opts != nil && opts.AllowUnscannable {
+		// Append query parameter, handling existing query strings
+		if hasQueryString(requestURL) {
+			requestURL += "&allow=unscannable"
+		} else {
+			requestURL += "?allow=unscannable"
+		}
 	}
-	req.Header.Set("Authorization", "Bearer "+c.webexClient.GetAccessToken())
 
-	resp, err := c.webexClient.GetHTTPClient().Do(req)
+	resp, err := c.webexClient.RequestURL(http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching content: %w", err)
 	}
@@ -109,7 +147,7 @@ func (c *Client) DownloadFromURL(contentURL string) (*FileInfo, error) {
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %d - %s", resp.StatusCode, string(body))
+		return nil, webexsdk.NewAPIError(resp, body)
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -123,4 +161,14 @@ func (c *Client) DownloadFromURL(contentURL string) (*FileInfo, error) {
 		ContentLength:      resp.ContentLength,
 		Data:               data,
 	}, nil
+}
+
+// hasQueryString returns true if the URL already has query parameters.
+func hasQueryString(u string) bool {
+	for i := 0; i < len(u); i++ {
+		if u[i] == '?' {
+			return true
+		}
+	}
+	return false
 }

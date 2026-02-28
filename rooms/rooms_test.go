@@ -8,6 +8,7 @@ package rooms
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -442,5 +443,78 @@ func TestDelete(t *testing.T) {
 	err = roomsPlugin.Delete("test-room-id")
 	if err != nil {
 		t.Fatalf("Failed to delete room: %v", err)
+	}
+}
+
+func TestList_PartialFailures(t *testing.T) {
+	// Per eval.md: list responses may contain items with field-level errors
+	// (e.g., encrypted titles that KMS failed to decrypt)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, `{
+			"items": [
+				{
+					"id": "room-1",
+					"title": "Normal Room",
+					"type": "group",
+					"isLocked": false
+				},
+				{
+					"id": "room-2",
+					"title": "eyJhbGciOiIiLCJraWQiOiIiLCJlbmMiOiIifQ....",
+					"errors": {
+						"title": {
+							"code": "kms_failure",
+							"reason": "Key management server failed to respond appropriately."
+						}
+					}
+				}
+			]
+		}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &webexsdk.Config{
+		BaseURL:        server.URL,
+		Timeout:        5 * time.Second,
+		HttpClient:     server.Client(),
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := webexsdk.NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	roomsPlugin := New(client, nil)
+	page, err := roomsPlugin.List(nil)
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if len(page.Items) != 2 {
+		t.Fatalf("Expected 2 items, got %d", len(page.Items))
+	}
+
+	// First room should have no errors
+	if page.Items[0].Errors.HasErrors() {
+		t.Error("Expected no errors on first room")
+	}
+	if page.Items[0].Title != "Normal Room" {
+		t.Errorf("Expected 'Normal Room', got %q", page.Items[0].Title)
+	}
+
+	// Second room should have a title error
+	if !page.Items[1].Errors.HasErrors() {
+		t.Fatal("Expected errors on second room")
+	}
+	if !page.Items[1].Errors.HasFieldError("title") {
+		t.Error("Expected title field error")
+	}
+	titleErr := page.Items[1].Errors["title"]
+	if titleErr.Code != "kms_failure" {
+		t.Errorf("Expected code 'kms_failure', got %q", titleErr.Code)
+	}
+	if page.Items[1].ID != "room-2" {
+		t.Errorf("Expected id 'room-2', got %q", page.Items[1].ID)
 	}
 }

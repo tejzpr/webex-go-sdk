@@ -160,10 +160,11 @@ func (c *Client) GetPlugin(name string) (Plugin, bool) {
 	return plugin, ok
 }
 
-// Request performs an HTTP request to the Webex API.
+// Request performs an HTTP request to the Webex API with automatic retry
+// for transient errors (429, 502, 503, 504).
 // The caller is responsible for closing the response body when done.
 func (c *Client) Request(method, path string, params url.Values, body interface{}) (*http.Response, error) {
-	return c.RequestWithContext(context.Background(), method, path, params, body)
+	return c.RequestWithRetry(context.Background(), method, path, params, body)
 }
 
 // RequestWithContext performs an HTTP request to the Webex API with the given context.
@@ -249,8 +250,10 @@ func (c *Client) RequestWithRetry(ctx context.Context, method, path string, para
 }
 
 // isRetryableStatus returns true for HTTP status codes that should be retried.
+// Includes 423 Locked (file being scanned for malware) per Webex API spec.
 func isRetryableStatus(statusCode int) bool {
 	return statusCode == http.StatusTooManyRequests ||
+		statusCode == http.StatusLocked || // 423 — anti-malware scanning in progress
 		statusCode == http.StatusBadGateway ||
 		statusCode == http.StatusServiceUnavailable ||
 		statusCode == http.StatusGatewayTimeout
@@ -260,7 +263,8 @@ func isRetryableStatus(statusCode int) bool {
 // For 429 responses, it respects the Retry-After header if present.
 // Otherwise, it uses exponential backoff: baseDelay * 2^attempt.
 func retryDelay(resp *http.Response, baseDelay time.Duration, attempt int) time.Duration {
-	if resp.StatusCode == http.StatusTooManyRequests {
+	// Respect Retry-After header for 429 (rate limit) and 423 (malware scanning)
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusLocked {
 		if ra := resp.Header.Get("Retry-After"); ra != "" {
 			if seconds, err := strconv.Atoi(ra); err == nil && seconds > 0 {
 				return time.Duration(seconds) * time.Second
@@ -284,10 +288,53 @@ type MultipartFile struct {
 	Content   []byte // Raw file bytes
 }
 
-// RequestMultipart performs a multipart/form-data POST request to the Webex API.
+// RequestMultipart performs a multipart/form-data POST request to the Webex API
+// with automatic retry for transient errors (429, 502, 503, 504).
 // This is required for local file uploads (e.g., sending messages with attachments).
 // The caller is responsible for closing the response body when done.
 func (c *Client) RequestMultipart(path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
+	return c.RequestMultipartWithRetry(context.Background(), path, fields, files)
+}
+
+// RequestMultipartWithRetry performs a multipart/form-data POST with retry support.
+// The multipart body is rebuilt on each retry attempt.
+func (c *Client) RequestMultipartWithRetry(ctx context.Context, path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
+	maxRetries := c.Config.MaxRetries
+	baseDelay := c.Config.RetryBaseDelay
+	if baseDelay == 0 {
+		baseDelay = 1 * time.Second
+	}
+
+	var resp *http.Response
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = c.doMultipartRequest(ctx, path, fields, files)
+		if err != nil {
+			return nil, err
+		}
+
+		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+			return resp, nil
+		}
+
+		delay := retryDelay(resp, baseDelay, attempt)
+		resp.Body.Close()
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return resp, err
+}
+
+// doMultipartRequest performs a single multipart/form-data POST request.
+func (c *Client) doMultipartRequest(ctx context.Context, path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
 	u, err := url.Parse(c.BaseURL.String() + "/" + path)
 	if err != nil {
 		return nil, err
@@ -318,7 +365,7 @@ func (c *Client) RequestMultipart(path string, fields []MultipartField, files []
 		return nil, fmt.Errorf("error closing multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), &body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), &body)
 	if err != nil {
 		return nil, err
 	}
@@ -334,11 +381,13 @@ func (c *Client) RequestMultipart(path string, fields []MultipartField, files []
 	return c.httpClient.Do(req)
 }
 
-// Page represents a paginated response from the Webex API
+// Page represents a paginated response from the Webex API.
+// Pagination follows RFC 5988 (Web Linking) — next/prev URLs are parsed
+// from the response's Link header.
 type Page struct {
 	Items    []json.RawMessage `json:"items"`
-	NextPage string            `json:"nextPage,omitempty"`
-	PrevPage string            `json:"prevPage,omitempty"`
+	NextPage string            `json:"-"`
+	PrevPage string            `json:"-"`
 	HasNext  bool              `json:"-"`
 	HasPrev  bool              `json:"-"`
 	Client   *Client           `json:"-"`
@@ -355,14 +404,191 @@ func ParseResponse(resp *http.Response, v interface{}) error {
 	}
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API error: %d - %s", resp.StatusCode, string(body))
+		return NewAPIError(resp, body)
 	}
 
 	return json.Unmarshal(body, v)
 }
 
-// NewPage creates a new Page from an HTTP response
+// RequestURL performs an HTTP GET request to a full URL (not relative to BaseURL).
+// This is used for pagination where Link headers contain absolute URLs.
+// The request includes the same authentication and default headers as regular requests.
+// The caller is responsible for closing the response body when done.
+func (c *Client) RequestURL(method, fullURL string, body interface{}) (*http.Response, error) {
+	return c.RequestURLWithRetry(context.Background(), method, fullURL, body)
+}
+
+// RequestURLWithRetry performs an HTTP request to a full URL with retry logic.
+func (c *Client) RequestURLWithRetry(ctx context.Context, method, fullURL string, body interface{}) (*http.Response, error) {
+	maxRetries := c.Config.MaxRetries
+	baseDelay := c.Config.RetryBaseDelay
+	if baseDelay == 0 {
+		baseDelay = 1 * time.Second
+	}
+
+	var resp *http.Response
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err = c.doRequestURL(ctx, method, fullURL, body)
+		if err != nil {
+			return nil, err
+		}
+
+		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+			return resp, nil
+		}
+
+		delay := retryDelay(resp, baseDelay, attempt)
+		resp.Body.Close()
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return resp, err
+}
+
+// doRequestURL performs a single HTTP request to a full URL.
+func (c *Client) doRequestURL(ctx context.Context, method, fullURL string, body interface{}) (*http.Response, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			return nil, err
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	for k, v := range c.Config.DefaultHeaders {
+		req.Header.Set(k, v)
+	}
+
+	return c.httpClient.Do(req)
+}
+
+// parseLinkHeader parses an RFC 5988 Link header value and returns a map
+// of rel type to URL. For example:
+//
+//	<https://example.com/items?page=2>; rel="next"
+//
+// returns {"next": "https://example.com/items?page=2"}.
+func parseLinkHeader(header string) map[string]string {
+	links := make(map[string]string)
+	if header == "" {
+		return links
+	}
+
+	// Split by comma for multiple links
+	parts := splitLinks(header)
+	for _, part := range parts {
+		// Extract URL between < and >
+		urlStart := indexOf(part, '<')
+		urlEnd := indexOf(part, '>')
+		if urlStart < 0 || urlEnd < 0 || urlEnd <= urlStart+1 {
+			continue
+		}
+		linkURL := part[urlStart+1 : urlEnd]
+
+		// Extract rel value
+		relStart := indexOfSubstring(part, `rel="`)
+		if relStart < 0 {
+			continue
+		}
+		relStart += 5 // len(`rel="`)
+		relEnd := indexOf(part[relStart:], '"')
+		if relEnd < 0 {
+			continue
+		}
+		rel := part[relStart : relStart+relEnd]
+
+		links[rel] = linkURL
+	}
+
+	return links
+}
+
+// splitLinks splits a Link header value by commas, respecting angle brackets.
+func splitLinks(header string) []string {
+	var parts []string
+	inBrackets := false
+	start := 0
+	for i := 0; i < len(header); i++ {
+		switch header[i] {
+		case '<':
+			inBrackets = true
+		case '>':
+			inBrackets = false
+		case ',':
+			if !inBrackets {
+				parts = append(parts, trimSpace(header[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	if start < len(header) {
+		parts = append(parts, trimSpace(header[start:]))
+	}
+	return parts
+}
+
+// indexOf returns the index of the first occurrence of c in s, or -1 if not found.
+func indexOf(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// indexOfSubstring returns the index of the first occurrence of sub in s, or -1.
+func indexOfSubstring(s, sub string) int {
+	if len(sub) > len(s) {
+		return -1
+	}
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
+// trimSpace trims leading and trailing whitespace from s.
+func trimSpace(s string) string {
+	start := 0
+	for start < len(s) && (s[start] == ' ' || s[start] == '\t') {
+		start++
+	}
+	end := len(s)
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	return s[start:end]
+}
+
+// NewPage creates a new Page from an HTTP response.
+// It parses the Link header (RFC 5988) for pagination URLs and
+// the JSON body for the items array.
 func NewPage(resp *http.Response, client *Client, resource string) (*Page, error) {
+	// Parse Link header before reading/closing the body
+	linkHeader := resp.Header.Get("Link")
+	links := parseLinkHeader(linkHeader)
+
 	page := &Page{
 		Client:   client,
 		Resource: resource,
@@ -372,19 +598,23 @@ func NewPage(resp *http.Response, client *Client, resource string) (*Page, error
 		return nil, err
 	}
 
+	// Set pagination URLs from Link header
+	page.NextPage = links["next"]
+	page.PrevPage = links["prev"]
 	page.HasNext = page.NextPage != ""
 	page.HasPrev = page.PrevPage != ""
 
 	return page, nil
 }
 
-// Next retrieves the next page of results
+// Next retrieves the next page of results using the URL from the Link header.
 func (p *Page) Next() (*Page, error) {
 	if !p.HasNext {
 		return nil, fmt.Errorf("no next page")
 	}
 
-	resp, err := p.Client.Request(http.MethodGet, p.NextPage, nil, nil)
+	// Link header URLs are absolute — use RequestURL
+	resp, err := p.Client.RequestURL(http.MethodGet, p.NextPage, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -392,13 +622,13 @@ func (p *Page) Next() (*Page, error) {
 	return NewPage(resp, p.Client, p.Resource)
 }
 
-// Prev retrieves the previous page of results
+// Prev retrieves the previous page of results using the URL from the Link header.
 func (p *Page) Prev() (*Page, error) {
 	if !p.HasPrev {
 		return nil, fmt.Errorf("no previous page")
 	}
 
-	resp, err := p.Client.Request(http.MethodGet, p.PrevPage, nil, nil)
+	resp, err := p.Client.RequestURL(http.MethodGet, p.PrevPage, nil)
 	if err != nil {
 		return nil, err
 	}

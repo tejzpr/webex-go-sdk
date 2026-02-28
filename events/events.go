@@ -18,14 +18,15 @@ import (
 
 // Event represents a Webex event
 type Event struct {
-	ID       string    `json:"id,omitempty"`
-	Resource string    `json:"resource,omitempty"`
-	Type     string    `json:"type,omitempty"`
-	AppID    string    `json:"appId,omitempty"`
-	ActorID  string    `json:"actorId,omitempty"`
-	OrgID    string    `json:"orgId,omitempty"`
-	Created  time.Time `json:"created,omitempty"`
-	Data     EventData `json:"data,omitempty"`
+	ID       string                  `json:"id,omitempty"`
+	Resource string                  `json:"resource,omitempty"`
+	Type     string                  `json:"type,omitempty"`
+	AppID    string                  `json:"appId,omitempty"`
+	ActorID  string                  `json:"actorId,omitempty"`
+	OrgID    string                  `json:"orgId,omitempty"`
+	Created  time.Time               `json:"created,omitempty"`
+	Data     EventData               `json:"data,omitempty"`
+	Errors   webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // EventData represents the data field of an event

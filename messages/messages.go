@@ -24,24 +24,25 @@ import (
 
 // Message represents a Webex message
 type Message struct {
-	ID              string       `json:"id,omitempty"`
-	RoomID          string       `json:"roomId,omitempty"`
-	RoomType        string       `json:"roomType,omitempty"`
-	ParentID        string       `json:"parentId,omitempty"`
-	ToPersonID      string       `json:"toPersonId,omitempty"`
-	ToPersonEmail   string       `json:"toPersonEmail,omitempty"`
-	Text            string       `json:"text,omitempty"`
-	Markdown        string       `json:"markdown,omitempty"`
-	HTML            string       `json:"html,omitempty"`
-	Files           []string     `json:"files,omitempty"`
-	PersonID        string       `json:"personId,omitempty"`
-	PersonEmail     string       `json:"personEmail,omitempty"`
-	Created         *time.Time   `json:"created,omitempty"`
-	Updated         *time.Time   `json:"updated,omitempty"`
-	MentionedPeople []string     `json:"mentionedPeople,omitempty"`
-	MentionedGroups []string     `json:"mentionedGroups,omitempty"`
-	Attachments     []Attachment `json:"attachments,omitempty"`
-	IsVoiceClip     bool         `json:"isVoiceClip,omitempty"`
+	ID              string                  `json:"id,omitempty"`
+	RoomID          string                  `json:"roomId,omitempty"`
+	RoomType        string                  `json:"roomType,omitempty"`
+	ParentID        string                  `json:"parentId,omitempty"`
+	ToPersonID      string                  `json:"toPersonId,omitempty"`
+	ToPersonEmail   string                  `json:"toPersonEmail,omitempty"`
+	Text            string                  `json:"text,omitempty"`
+	Markdown        string                  `json:"markdown,omitempty"`
+	HTML            string                  `json:"html,omitempty"`
+	Files           []string                `json:"files,omitempty"`
+	PersonID        string                  `json:"personId,omitempty"`
+	PersonEmail     string                  `json:"personEmail,omitempty"`
+	Created         *time.Time              `json:"created,omitempty"`
+	Updated         *time.Time              `json:"updated,omitempty"`
+	MentionedPeople []string                `json:"mentionedPeople,omitempty"`
+	MentionedGroups []string                `json:"mentionedGroups,omitempty"`
+	Attachments     []Attachment            `json:"attachments,omitempty"`
+	IsVoiceClip     bool                    `json:"isVoiceClip,omitempty"`
+	Errors          webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // Attachment represents a message attachment, such as an adaptive card

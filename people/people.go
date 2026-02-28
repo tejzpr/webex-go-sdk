@@ -25,19 +25,20 @@ type BatchResponse struct {
 
 // Person represents a Webex person
 type Person struct {
-	ID          string    `json:"id"`
-	Emails      []string  `json:"emails"`
-	DisplayName string    `json:"displayName"`
-	NickName    string    `json:"nickName,omitempty"`
-	FirstName   string    `json:"firstName,omitempty"`
-	LastName    string    `json:"lastName,omitempty"`
-	Avatar      string    `json:"avatar,omitempty"`
-	OrgID       string    `json:"orgId,omitempty"`
-	Roles       []string  `json:"roles,omitempty"`
-	Licenses    []string  `json:"licenses,omitempty"`
-	Created     time.Time `json:"created,omitempty"`
-	Status      string    `json:"status,omitempty"`
-	Type        string    `json:"type,omitempty"`
+	ID          string                  `json:"id"`
+	Emails      []string                `json:"emails"`
+	DisplayName string                  `json:"displayName"`
+	NickName    string                  `json:"nickName,omitempty"`
+	FirstName   string                  `json:"firstName,omitempty"`
+	LastName    string                  `json:"lastName,omitempty"`
+	Avatar      string                  `json:"avatar,omitempty"`
+	OrgID       string                  `json:"orgId,omitempty"`
+	Roles       []string                `json:"roles,omitempty"`
+	Licenses    []string                `json:"licenses,omitempty"`
+	Created     time.Time               `json:"created,omitempty"`
+	Status      string                  `json:"status,omitempty"`
+	Type        string                  `json:"type,omitempty"`
+	Errors      webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing people

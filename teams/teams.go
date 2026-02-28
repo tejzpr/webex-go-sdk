@@ -18,11 +18,12 @@ import (
 
 // Team represents a Webex team
 type Team struct {
-	ID          string     `json:"id,omitempty"`
-	Name        string     `json:"name,omitempty"`
-	Description string     `json:"description,omitempty"`
-	CreatorID   string     `json:"creatorId,omitempty"`
-	Created     *time.Time `json:"created,omitempty"`
+	ID          string                  `json:"id,omitempty"`
+	Name        string                  `json:"name,omitempty"`
+	Description string                  `json:"description,omitempty"`
+	CreatorID   string                  `json:"creatorId,omitempty"`
+	Created     *time.Time              `json:"created,omitempty"`
+	Errors      webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing teams

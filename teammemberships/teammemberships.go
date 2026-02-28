@@ -18,13 +18,14 @@ import (
 
 // TeamMembership represents a Webex team membership
 type TeamMembership struct {
-	ID                string     `json:"id,omitempty"`
-	TeamID            string     `json:"teamId,omitempty"`
-	PersonID          string     `json:"personId,omitempty"`
-	PersonEmail       string     `json:"personEmail,omitempty"`
-	PersonDisplayName string     `json:"personDisplayName,omitempty"`
-	IsModerator       bool       `json:"isModerator,omitempty"`
-	Created           *time.Time `json:"created,omitempty"`
+	ID                string                  `json:"id,omitempty"`
+	TeamID            string                  `json:"teamId,omitempty"`
+	PersonID          string                  `json:"personId,omitempty"`
+	PersonEmail       string                  `json:"personEmail,omitempty"`
+	PersonDisplayName string                  `json:"personDisplayName,omitempty"`
+	IsModerator       bool                    `json:"isModerator,omitempty"`
+	Created           *time.Time              `json:"created,omitempty"`
+	Errors            webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ListOptions contains the options for listing team memberships

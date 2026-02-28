@@ -83,6 +83,7 @@ type Meeting struct {
 	AttendeePrivileges           *AttendeePrivileges         `json:"attendeePrivileges,omitempty"`
 	MeetingOptions               *MeetingOptions             `json:"meetingOptions,omitempty"`
 	LiveStream                   *LiveStream                 `json:"liveStream,omitempty"`
+	Errors                       webexsdk.ResourceErrors     `json:"errors,omitempty"`
 }
 
 // Telephony contains telephony dial-in information for a meeting
@@ -242,7 +243,8 @@ type Participant struct {
 	LeftTime       string              `json:"leftTime,omitempty"`
 	MeetingID      string              `json:"meetingId,omitempty"`
 	HostEmail      string              `json:"hostEmail,omitempty"`
-	Devices        []ParticipantDevice `json:"devices,omitempty"`
+	Devices        []ParticipantDevice     `json:"devices,omitempty"`
+	Errors         webexsdk.ResourceErrors `json:"errors,omitempty"`
 }
 
 // ParticipantDevice represents a device used by a meeting participant
