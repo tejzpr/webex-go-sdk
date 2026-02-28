@@ -943,7 +943,9 @@ func TestEndToEndDecrypt(t *testing.T) {
 	// 4. Decrypt the message
 
 	rawKey := make([]byte, 32)
-	rand.Read(rawKey)
+	if _, err := rand.Read(rawKey); err != nil {
+		t.Fatal(err)
+	}
 	keyURI := "kms://ciscospark.com/keys/e2e-test-key"
 
 	// Create JWE-encrypted message (simulating what Webex would produce)

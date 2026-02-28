@@ -300,14 +300,16 @@ func TestLine(t *testing.T) {
 			switch r.Method {
 			case http.MethodPost:
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(MobiusDeviceInfo{
+				if err := json.NewEncoder(w).Encode(MobiusDeviceInfo{
 					UserID:            "user-123",
 					KeepaliveInterval: 30,
 					Device: &DeviceType{
 						DeviceID: "device-abc",
 						URI:      "https://mobius/devices/device-abc",
 					},
-				})
+				}); err != nil {
+					t.Logf("Failed to encode response: %v", err)
+				}
 			case http.MethodDelete, http.MethodPut:
 				w.WriteHeader(http.StatusOK)
 			default:
@@ -349,9 +351,11 @@ func TestLine(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(MobiusDeviceInfo{
+			if err := json.NewEncoder(w).Encode(MobiusDeviceInfo{
 				Device: &DeviceType{DeviceID: "backup-device"},
-			})
+			}); err != nil {
+				t.Logf("Failed to encode response: %v", err)
+			}
 		}))
 		defer server.Close()
 
@@ -396,9 +400,11 @@ func TestLine(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(MobiusDeviceInfo{
+				if err := json.NewEncoder(w).Encode(MobiusDeviceInfo{
 					Device: &DeviceType{DeviceID: "dev-1", URI: "https://test/dev-1"},
-				})
+				}); err != nil {
+					t.Logf("Failed to encode response: %v", err)
+				}
 				return
 			}
 			if r.Method == http.MethodDelete {

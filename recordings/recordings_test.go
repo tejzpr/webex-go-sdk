@@ -443,7 +443,9 @@ func TestDownloadTranscript(t *testing.T) {
 		} else if r.URL.Path == "/download/transcript.txt" {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write(transcriptContent)
+			if _, err := w.Write(transcriptContent); err != nil {
+				t.Logf("Failed to write response: %v", err)
+			}
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

@@ -51,7 +51,9 @@ func TestDownload(t *testing.T) {
 		w.Header().Set("Content-Type", "application/pdf")
 		w.Header().Set("Content-Disposition", `attachment; filename="report.pdf"`)
 		w.WriteHeader(http.StatusOK)
-		w.Write(fileData)
+		if _, err := w.Write(fileData); err != nil {
+			t.Logf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -83,7 +85,9 @@ func TestDownload_EmptyID(t *testing.T) {
 func TestDownload_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"message":"not found"}`))
+		if _, err := w.Write([]byte(`{"message":"not found"}`)); err != nil {
+			t.Logf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
