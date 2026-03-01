@@ -139,6 +139,7 @@ func TestFunctionalMembershipsNotFound(t *testing.T) {
 	t.Logf("Got expected API error: status=%d message=%q trackingId=%s",
 		apiErr.StatusCode, apiErr.Message, apiErr.TrackingID)
 }
+
 // TestFunctionalMembershipsCursorNavigation tests PageFromCursor with memberships
 // Run with:
 //
