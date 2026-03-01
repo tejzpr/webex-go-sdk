@@ -746,7 +746,7 @@ func (cc *CallingClient) ConnectMercury(merc *mercury.Client) error {
 
 	log.Println("CallingClient: connecting Mercury WebSocket...")
 	if err := merc.Connect(); err != nil {
-		return fmt.Errorf("Mercury connection failed: %w", err)
+		return fmt.Errorf("mercury connection failed: %w", err)
 	}
 	log.Println("CallingClient: Mercury WebSocket connected")
 

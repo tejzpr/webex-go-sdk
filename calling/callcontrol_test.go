@@ -91,7 +91,7 @@ func TestMediaEngine(t *testing.T) {
 		if me == nil {
 			t.Fatal("Expected non-nil MediaEngine")
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 	})
 
 	t.Run("NewMediaEngine with custom config", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 		if me == nil {
 			t.Fatal("Expected non-nil MediaEngine")
 		}

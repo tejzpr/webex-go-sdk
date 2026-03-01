@@ -90,12 +90,12 @@ func TestNewPage_LinkHeader(t *testing.T) {
 			// First page with Link header
 			w.Header().Set("Link", fmt.Sprintf(`<%s/page2>; rel="next"`, serverURL))
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
 		case "/page2":
 			// Second page with prev link
 			w.Header().Set("Link", fmt.Sprintf(`<%s/items>; rel="prev"`, serverURL))
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -164,7 +164,7 @@ func TestNewPage_NoLinkHeader_EmptyPage(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		// No Link header — final page
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"items": [{"id": "only-item"}]}`)
+		_, _ = fmt.Fprintln(w, `{"items": [{"id": "only-item"}]}`)
 	}))
 	defer server.Close()
 
@@ -381,7 +381,7 @@ func TestRequestURL_FullURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestURL failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)

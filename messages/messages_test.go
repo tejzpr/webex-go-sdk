@@ -397,7 +397,7 @@ func TestCreateWithAttachment_RawBytes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get uploaded file: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if header.Filename != "test.txt" {
 			t.Errorf("Expected filename 'test.txt', got '%s'", header.Filename)
@@ -452,7 +452,7 @@ func TestCreateWithBase64File(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get uploaded file: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if header.Filename != "report.pdf" {
 			t.Errorf("Expected filename 'report.pdf', got '%s'", header.Filename)

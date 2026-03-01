@@ -436,7 +436,7 @@ func TestRequestMultipart(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to get form file: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		if header.Filename != "test.txt" {
 			t.Errorf("Expected filename 'test.txt', got '%s'", header.Filename)

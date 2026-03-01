@@ -132,11 +132,11 @@ func NewAudioBridge(config *AudioBridgeConfig) (*AudioBridge, error) {
 		"webex-bridge",
 	)
 	if err != nil {
-		pc.Close()
+		_ = pc.Close()
 		return nil, err
 	}
 	if _, err := pc.AddTrack(localTrack); err != nil {
-		pc.Close()
+		_ = pc.Close()
 		return nil, err
 	}
 

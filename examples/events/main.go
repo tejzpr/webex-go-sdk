@@ -75,12 +75,13 @@ func main() {
 
 			// Print data fields based on resource type
 			fmt.Printf("  Data:\n")
-			if eventDetails.Resource == "messages" {
+			switch eventDetails.Resource {
+			case "messages":
 				fmt.Printf("    Room ID: %s\n", eventDetails.Data.RoomID)
 				fmt.Printf("    Room Type: %s\n", eventDetails.Data.RoomType)
 				fmt.Printf("    Person ID: %s\n", eventDetails.Data.PersonID)
 				fmt.Printf("    Person Email: %s\n", eventDetails.Data.PersonEmail)
-			} else if eventDetails.Resource == "meetings" {
+			case "meetings":
 				fmt.Printf("    Meeting ID: %s\n", eventDetails.Data.MeetingID)
 				fmt.Printf("    Creator ID: %s\n", eventDetails.Data.CreatorID)
 				fmt.Printf("    Recording Enabled: %s\n", eventDetails.Data.RecordingEnabled)

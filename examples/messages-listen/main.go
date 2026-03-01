@@ -70,7 +70,7 @@ func main() {
 
 	// Clean up
 	fmt.Println("Stopping message listener...")
-	messagesClient.StopListening()
+	_ = messagesClient.StopListening()
 
 	fmt.Println("Exiting.")
 }

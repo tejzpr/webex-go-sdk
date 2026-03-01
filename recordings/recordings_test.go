@@ -332,7 +332,8 @@ func TestDownloadAudio(t *testing.T) {
 
 	// Use a single server for both API and download
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/recordings/rec-123" {
+		switch r.URL.Path {
+		case "/recordings/rec-123":
 			w.Header().Set("Content-Type", "application/json")
 			recording := Recording{
 				ID: "rec-123",
@@ -341,7 +342,7 @@ func TestDownloadAudio(t *testing.T) {
 				},
 			}
 			_ = json.NewEncoder(w).Encode(recording)
-		} else if r.URL.Path == "/download/audio.mp3" {
+		case "/download/audio.mp3":
 			if r.Header.Get("Authorization") != "Bearer test-token" {
 				t.Errorf("Expected auth header on download request")
 			}
@@ -349,7 +350,7 @@ func TestDownloadAudio(t *testing.T) {
 			w.Header().Set("Content-Disposition", `attachment; filename="audio.mp3"`)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(audioContent)
-		} else {
+		default:
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -384,7 +385,8 @@ func TestDownloadRecording(t *testing.T) {
 	videoContent := []byte("fake mp4 video content")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/recordings/rec-123" {
+		switch r.URL.Path {
+		case "/recordings/rec-123":
 			w.Header().Set("Content-Type", "application/json")
 			recording := Recording{
 				ID: "rec-123",
@@ -393,11 +395,11 @@ func TestDownloadRecording(t *testing.T) {
 				},
 			}
 			_ = json.NewEncoder(w).Encode(recording)
-		} else if r.URL.Path == "/download/video.mp4" {
+		case "/download/video.mp4":
 			w.Header().Set("Content-Type", "video/mp4")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(videoContent)
-		} else {
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
@@ -431,7 +433,8 @@ func TestDownloadTranscript(t *testing.T) {
 	transcriptContent := []byte("Speaker 1: Hello\nSpeaker 2: Hi there")
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/recordings/rec-123" {
+		switch r.URL.Path {
+		case "/recordings/rec-123":
 			w.Header().Set("Content-Type", "application/json")
 			recording := Recording{
 				ID: "rec-123",
@@ -440,13 +443,13 @@ func TestDownloadTranscript(t *testing.T) {
 				},
 			}
 			_ = json.NewEncoder(w).Encode(recording)
-		} else if r.URL.Path == "/download/transcript.txt" {
+		case "/download/transcript.txt":
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write(transcriptContent); err != nil {
 				t.Logf("Failed to write response: %v", err)
 			}
-		} else {
+		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))

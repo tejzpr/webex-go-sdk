@@ -363,7 +363,7 @@ func (c *Client) attemptConnection(wsURL string) error {
 
 	// Authenticate the connection
 	if err = c.authenticateConnection(conn, token); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return err
 	}
 
@@ -795,7 +795,7 @@ func (c *Client) reconnect() {
 
 	// Close the old connection if it exists
 	if conn != nil {
-		conn.Close()
+		_ = conn.Close()
 	}
 
 	// Try to reconnect

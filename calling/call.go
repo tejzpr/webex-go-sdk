@@ -523,7 +523,7 @@ func (c *Call) HandleMobiusEvent(event *MobiusCallEvent) {
 		c.connected = false
 		c.mu.Unlock()
 		if c.media != nil {
-			c.media.Close()
+			_ = c.media.Close()
 		}
 		c.Emitter.Emit(string(CallEventDisconnect), c.callID)
 
