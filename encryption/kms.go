@@ -246,7 +246,7 @@ func (c *Client) sendKMSMessage(wrappedMessage string, destination string) ([]st
 	if err != nil {
 		return nil, fmt.Errorf("error sending KMS request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

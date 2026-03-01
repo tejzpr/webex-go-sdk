@@ -60,7 +60,7 @@ func (c *CallHistoryClient) GetCallHistoryData(days, limit int, sort Sort, sortB
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -123,7 +123,7 @@ func (c *CallHistoryClient) UpdateMissedCalls(endTimeSessionIDs []EndTimeSession
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -180,7 +180,7 @@ func (c *CallHistoryClient) DeleteCallHistoryRecords(deleteSessionIDs []EndTimeS
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

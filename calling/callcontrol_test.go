@@ -177,7 +177,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 
 		state := me.GetConnectionState()
 		if state.String() == "" {
@@ -190,7 +190,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 
 		called := false
 		me.OnRemoteTrack(func(track *webrtc.TrackRemote) {
@@ -584,7 +584,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		err := call.Resume()
 		if err == nil {
@@ -617,7 +617,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		err := call.SendDigit("5")
 		if err == nil {
@@ -632,7 +632,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		err := call.CompleteTransfer(TransferTypeBlind, "", "+15551234567")
 		if err == nil {
@@ -647,7 +647,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		call.mu.Lock()
 		call.state = CallStateConnected
@@ -666,7 +666,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		reason := call.GetDisconnectReason()
 		if reason.Code != DisconnectCodeNormal {
@@ -681,7 +681,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		call.HandleMobiusEvent(nil) // should not panic
 	})
@@ -693,7 +693,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		call.mu.Lock()
 		call.state = CallStateProceeding
@@ -726,7 +726,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		connectEmitted := false
 		call.Emitter.On(string(CallEventConnect), func(data interface{}) {

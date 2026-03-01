@@ -97,7 +97,7 @@ func TestFunctionalTeamsList(t *testing.T) {
 
 	t.Logf("Found %d teams", len(page.Items))
 	for i, team := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Name=%q CreatorID=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Name=%q CreatorID=%s\n",
 			i+1, team.ID, team.Name, team.CreatorID)
 	}
 }

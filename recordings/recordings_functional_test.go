@@ -65,41 +65,41 @@ func TestFunctionalListRecordings(t *testing.T) {
 
 	t.Logf("Found %d recordings from the last 7 days", len(page.Items))
 	for i, r := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s Duration=%ds Size=%dMB Status=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s Duration=%ds Size=%dMB Status=%s\n",
 			i+1, r.ID, r.Topic, r.Format, r.DurationSeconds, r.SizeBytes/(1024*1024), r.Status)
 
 		// Log additional recording details
 		if r.HostEmail != "" {
-			fmt.Fprintf(os.Stdout, "    Host: %s\n", r.HostEmail)
+			_, _ = fmt.Fprintf(os.Stdout, "    Host: %s\n", r.HostEmail)
 		}
 		if r.SiteURL != "" {
-			fmt.Fprintf(os.Stdout, "    Site: %s\n", r.SiteURL)
+			_, _ = fmt.Fprintf(os.Stdout, "    Site: %s\n", r.SiteURL)
 		}
 		if r.ServiceType != "" {
-			fmt.Fprintf(os.Stdout, "    Service: %s\n", r.ServiceType)
+			_, _ = fmt.Fprintf(os.Stdout, "    Service: %s\n", r.ServiceType)
 		}
 		if r.PlaybackURL != "" {
-			fmt.Fprintf(os.Stdout, "    Playback: %s\n", r.PlaybackURL)
+			_, _ = fmt.Fprintf(os.Stdout, "    Playback: %s\n", r.PlaybackURL)
 		}
 		if r.ShareToMe {
-			fmt.Fprintf(os.Stdout, "    Shared to me: Yes\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Shared to me: Yes\n")
 		}
 		if len(r.IntegrationTags) > 0 {
-			fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", r.IntegrationTags)
+			_, _ = fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", r.IntegrationTags)
 		}
 		if r.TemporaryDirectDownloadLinks != nil {
-			fmt.Fprintf(os.Stdout, "    Direct Downloads: Available\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Direct Downloads: Available\n")
 			if r.TemporaryDirectDownloadLinks.RecordingDownloadLink != "" {
-				fmt.Fprintf(os.Stdout, "      - Recording: Available\n")
+				_, _ = fmt.Fprintf(os.Stdout, "      - Recording: Available\n")
 			}
 			if r.TemporaryDirectDownloadLinks.AudioDownloadLink != "" {
-				fmt.Fprintf(os.Stdout, "      - Audio: Available\n")
+				_, _ = fmt.Fprintf(os.Stdout, "      - Audio: Available\n")
 			}
 			if r.TemporaryDirectDownloadLinks.TranscriptDownloadLink != "" {
-				fmt.Fprintf(os.Stdout, "      - Transcript: Available\n")
+				_, _ = fmt.Fprintf(os.Stdout, "      - Transcript: Available\n")
 			}
 			if r.TemporaryDirectDownloadLinks.Expiration != "" {
-				fmt.Fprintf(os.Stdout, "      - Expires: %s\n", r.TemporaryDirectDownloadLinks.Expiration)
+				_, _ = fmt.Fprintf(os.Stdout, "      - Expires: %s\n", r.TemporaryDirectDownloadLinks.Expiration)
 			}
 		}
 	}
@@ -131,7 +131,7 @@ func TestFunctionalListRecordingsByMeeting(t *testing.T) {
 		skipOn403(t, err)
 		t.Fatalf("Failed to list meetings: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	page, err := webexsdk.NewPage(resp, client, "meetings")
 	if err != nil {
@@ -169,17 +169,17 @@ func TestFunctionalListRecordingsByMeeting(t *testing.T) {
 		if len(recordingsPage.Items) > 0 {
 			t.Logf("Found %d recordings for meeting %s", len(recordingsPage.Items), meeting.ID)
 			for i, r := range recordingsPage.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s Duration=%ds\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s Duration=%ds\n",
 					i+1, r.ID, r.Topic, r.Format, r.DurationSeconds)
 
 				if r.TimeRecorded != "" {
-					fmt.Fprintf(os.Stdout, "    Recorded: %s\n", r.TimeRecorded)
+					_, _ = fmt.Fprintf(os.Stdout, "    Recorded: %s\n", r.TimeRecorded)
 				}
 				if r.CreateTime != "" {
-					fmt.Fprintf(os.Stdout, "    Created: %s\n", r.CreateTime)
+					_, _ = fmt.Fprintf(os.Stdout, "    Created: %s\n", r.CreateTime)
 				}
 				if r.DownloadURL != "" {
-					fmt.Fprintf(os.Stdout, "    Download: %s\n", r.DownloadURL)
+					_, _ = fmt.Fprintf(os.Stdout, "    Download: %s\n", r.DownloadURL)
 				}
 			}
 			break // Found a meeting with recordings
@@ -228,14 +228,14 @@ func TestFunctionalListRecordingsByFormat(t *testing.T) {
 			t.Logf("%s format: Found %d recordings", format, len(page.Items))
 
 			for i, r := range page.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds Size=%dMB\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds Size=%dMB\n",
 					i+1, r.ID, r.Topic, r.DurationSeconds, r.SizeBytes/(1024*1024))
 
 				if r.ServiceType != "" {
-					fmt.Fprintf(os.Stdout, "    Service: %s\n", r.ServiceType)
+					_, _ = fmt.Fprintf(os.Stdout, "    Service: %s\n", r.ServiceType)
 				}
 				if r.Status != "" {
-					fmt.Fprintf(os.Stdout, "    Status: %s\n", r.Status)
+					_, _ = fmt.Fprintf(os.Stdout, "    Status: %s\n", r.Status)
 				}
 			}
 		})
@@ -281,17 +281,17 @@ func TestFunctionalListRecordingsByStatus(t *testing.T) {
 			t.Logf("%s status: Found %d recordings", status, len(page.Items))
 
 			for i, r := range page.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Format=%s\n",
 					i+1, r.ID, r.Topic, r.Format)
 
 				if r.MeetingID != "" {
-					fmt.Fprintf(os.Stdout, "    Meeting ID: %s\n", r.MeetingID)
+					_, _ = fmt.Fprintf(os.Stdout, "    Meeting ID: %s\n", r.MeetingID)
 				}
 				if r.HostEmail != "" {
-					fmt.Fprintf(os.Stdout, "    Host: %s\n", r.HostEmail)
+					_, _ = fmt.Fprintf(os.Stdout, "    Host: %s\n", r.HostEmail)
 				}
 				if r.TimeRecorded != "" {
-					fmt.Fprintf(os.Stdout, "    Recorded: %s\n", r.TimeRecorded)
+					_, _ = fmt.Fprintf(os.Stdout, "    Recorded: %s\n", r.TimeRecorded)
 				}
 			}
 		})

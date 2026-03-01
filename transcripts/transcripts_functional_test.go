@@ -66,30 +66,30 @@ func TestFunctionalListTranscripts(t *testing.T) {
 
 	t.Logf("Found %d transcripts from the last 7 days", len(page.Items))
 	for i, tr := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds Status=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds Status=%s\n",
 			i+1, tr.ID, tr.MeetingTopic, tr.Duration, tr.Status)
 
 		// Log additional transcript details
 		if tr.HostEmail != "" {
-			fmt.Fprintf(os.Stdout, "    Host: %s\n", tr.HostEmail)
+			_, _ = fmt.Fprintf(os.Stdout, "    Host: %s\n", tr.HostEmail)
 		}
 		if tr.SiteURL != "" {
-			fmt.Fprintf(os.Stdout, "    Site: %s\n", tr.SiteURL)
+			_, _ = fmt.Fprintf(os.Stdout, "    Site: %s\n", tr.SiteURL)
 		}
 		if tr.StartTime != "" {
-			fmt.Fprintf(os.Stdout, "    Start: %s\n", tr.StartTime)
+			_, _ = fmt.Fprintf(os.Stdout, "    Start: %s\n", tr.StartTime)
 		}
 		if tr.EndTime != "" {
-			fmt.Fprintf(os.Stdout, "    End: %s\n", tr.EndTime)
+			_, _ = fmt.Fprintf(os.Stdout, "    End: %s\n", tr.EndTime)
 		}
 		if tr.VttDownloadLink != "" {
-			fmt.Fprintf(os.Stdout, "    VTT Download: %s\n", tr.VttDownloadLink)
+			_, _ = fmt.Fprintf(os.Stdout, "    VTT Download: %s\n", tr.VttDownloadLink)
 		}
 		if tr.TxtDownloadLink != "" {
-			fmt.Fprintf(os.Stdout, "    Text Download: %s\n", tr.TxtDownloadLink)
+			_, _ = fmt.Fprintf(os.Stdout, "    Text Download: %s\n", tr.TxtDownloadLink)
 		}
 		if tr.MeetingID != "" {
-			fmt.Fprintf(os.Stdout, "    Meeting ID: %s\n", tr.MeetingID)
+			_, _ = fmt.Fprintf(os.Stdout, "    Meeting ID: %s\n", tr.MeetingID)
 		}
 	}
 }
@@ -127,7 +127,7 @@ func TestFunctionalListTranscriptsByMeeting(t *testing.T) {
 		skipOn403(t, err)
 		t.Fatalf("Failed to list meeting instances: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	page, err := webexsdk.NewPage(resp, client, "meetings")
 	if err != nil {
@@ -165,17 +165,17 @@ func TestFunctionalListTranscriptsByMeeting(t *testing.T) {
 		if len(transcriptsPage.Items) > 0 {
 			t.Logf("Found %d transcripts for meeting %s", len(transcriptsPage.Items), meeting.ID)
 			for i, tr := range transcriptsPage.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Topic=%q Duration=%ds\n",
 					i+1, tr.ID, tr.MeetingTopic, tr.Duration)
 
 				if tr.StartTime != "" {
-					fmt.Fprintf(os.Stdout, "    Start: %s\n", tr.StartTime)
+					_, _ = fmt.Fprintf(os.Stdout, "    Start: %s\n", tr.StartTime)
 				}
 				if tr.EndTime != "" {
-					fmt.Fprintf(os.Stdout, "    End: %s\n", tr.EndTime)
+					_, _ = fmt.Fprintf(os.Stdout, "    End: %s\n", tr.EndTime)
 				}
 				if tr.Status != "" {
-					fmt.Fprintf(os.Stdout, "    Status: %s\n", tr.Status)
+					_, _ = fmt.Fprintf(os.Stdout, "    Status: %s\n", tr.Status)
 				}
 			}
 			break // Found a meeting with transcripts
@@ -235,29 +235,29 @@ func TestFunctionalListTranscriptSnippets(t *testing.T) {
 			t.Logf("Found %d snippets for transcript %s", len(snippetsPage.Items), transcript.ID)
 
 			for i, s := range snippetsPage.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Speaker=%q Text=%q\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Speaker=%q Text=%q\n",
 					i+1, s.ID, s.PersonName, s.Text)
 
 				if s.PersonEmail != "" {
-					fmt.Fprintf(os.Stdout, "    Email: %s\n", s.PersonEmail)
+					_, _ = fmt.Fprintf(os.Stdout, "    Email: %s\n", s.PersonEmail)
 				}
 				if s.DurationMillisecond > 0 {
-					fmt.Fprintf(os.Stdout, "    Duration: %dms\n", s.DurationMillisecond)
+					_, _ = fmt.Fprintf(os.Stdout, "    Duration: %dms\n", s.DurationMillisecond)
 				}
 				if s.OffsetMillisecond > 0 {
-					fmt.Fprintf(os.Stdout, "    Offset: %dms\n", s.OffsetMillisecond)
+					_, _ = fmt.Fprintf(os.Stdout, "    Offset: %dms\n", s.OffsetMillisecond)
 				}
 				if s.Language != "" {
-					fmt.Fprintf(os.Stdout, "    Language: %s\n", s.Language)
+					_, _ = fmt.Fprintf(os.Stdout, "    Language: %s\n", s.Language)
 				}
 				if s.Confidence > 0 {
-					fmt.Fprintf(os.Stdout, "    Confidence: %.2f\n", s.Confidence)
+					_, _ = fmt.Fprintf(os.Stdout, "    Confidence: %.2f\n", s.Confidence)
 				}
 				if s.StartTime != "" {
-					fmt.Fprintf(os.Stdout, "    Start: %s\n", s.StartTime)
+					_, _ = fmt.Fprintf(os.Stdout, "    Start: %s\n", s.StartTime)
 				}
 				if s.EndTime != "" {
-					fmt.Fprintf(os.Stdout, "    End: %s\n", s.EndTime)
+					_, _ = fmt.Fprintf(os.Stdout, "    End: %s\n", s.EndTime)
 				}
 			}
 			break // Found a transcript with snippets
@@ -335,18 +335,18 @@ func TestFunctionalListTranscriptSnippetsByPerson(t *testing.T) {
 	t.Logf("Found %d snippets for person %s", len(filteredSnippetsPage.Items), personEmail)
 
 	for i, s := range filteredSnippetsPage.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Text=%q\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Text=%q\n",
 			i+1, s.ID, s.Text)
 
 		if s.DurationMillisecond > 0 {
-			fmt.Fprintf(os.Stdout, "    Duration: %dms\n", s.DurationMillisecond)
+			_, _ = fmt.Fprintf(os.Stdout, "    Duration: %dms\n", s.DurationMillisecond)
 		}
 		if s.OffsetMillisecond > 0 {
-			fmt.Fprintf(os.Stdout, "    Offset: %dms (%.1fs into meeting)\n",
+			_, _ = fmt.Fprintf(os.Stdout, "    Offset: %dms (%.1fs into meeting)\n",
 				s.OffsetMillisecond, float64(s.OffsetMillisecond)/1000)
 		}
 		if s.StartTime != "" {
-			fmt.Fprintf(os.Stdout, "    Start: %s\n", s.StartTime)
+			_, _ = fmt.Fprintf(os.Stdout, "    Start: %s\n", s.StartTime)
 		}
 	}
 }
@@ -395,9 +395,9 @@ func TestFunctionalTranscriptsDownload(t *testing.T) {
 	}
 	t.Logf("TXT content length: %d bytes", len(txtContent))
 	if len(txtContent) > 200 {
-		fmt.Fprintf(os.Stdout, "TXT preview: %s...\n", txtContent[:200])
+		_, _ = fmt.Fprintf(os.Stdout, "TXT preview: %s...\n", txtContent[:200])
 	} else {
-		fmt.Fprintf(os.Stdout, "TXT content: %s\n", txtContent)
+		_, _ = fmt.Fprintf(os.Stdout, "TXT content: %s\n", txtContent)
 	}
 
 	// Test VTT format download
@@ -407,9 +407,9 @@ func TestFunctionalTranscriptsDownload(t *testing.T) {
 	}
 	t.Logf("VTT content length: %d bytes", len(vttContent))
 	if len(vttContent) > 200 {
-		fmt.Fprintf(os.Stdout, "VTT preview: %s...\n", vttContent[:200])
+		_, _ = fmt.Fprintf(os.Stdout, "VTT preview: %s...\n", vttContent[:200])
 	} else {
-		fmt.Fprintf(os.Stdout, "VTT content: %s\n", vttContent)
+		_, _ = fmt.Fprintf(os.Stdout, "VTT content: %s\n", vttContent)
 	}
 }
 

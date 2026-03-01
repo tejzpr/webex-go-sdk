@@ -99,7 +99,7 @@ func (c *Client) DownloadWithOptions(contentID string, opts *DownloadOptions) (*
 	if err != nil {
 		return nil, fmt.Errorf("error fetching content: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
@@ -151,7 +151,7 @@ func (c *Client) DownloadFromURLWithOptions(contentURL string, opts *DownloadOpt
 	if err != nil {
 		return nil, fmt.Errorf("error fetching content: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)

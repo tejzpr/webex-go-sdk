@@ -179,7 +179,7 @@ func (l *Line) attemptRegistration(mobiusURL string) error {
 	if err != nil {
 		return fmt.Errorf("error making registration request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	log.Printf("Registration: received response status %d from %s", resp.StatusCode, url)
 
 	body, err := io.ReadAll(resp.Body)
@@ -256,7 +256,7 @@ func (l *Line) deleteDevice(mobiusURL string, deviceID string) error {
 	if err != nil {
 		return fmt.Errorf("error making delete request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -314,7 +314,7 @@ func (l *Line) Deregister() error {
 	if err != nil {
 		log.Printf("Deregister request failed: %v", err)
 	} else {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	l.mu.Lock()
@@ -441,7 +441,7 @@ func (l *Line) sendKeepalive() {
 		log.Printf("Keepalive request failed: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		log.Printf("Keepalive returned 404, device may have been deregistered")

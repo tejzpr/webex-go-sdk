@@ -189,7 +189,7 @@ func (c *Client) Delete(tabID string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// For DELETE operations, we just check the status code
 	if resp.StatusCode != http.StatusNoContent {

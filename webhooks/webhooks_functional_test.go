@@ -108,7 +108,7 @@ func TestFunctionalWebhooksList(t *testing.T) {
 
 	t.Logf("Found %d webhooks", len(page.Items))
 	for i, w := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Name=%q Resource=%s Event=%s Status=%s TargetURL=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Name=%q Resource=%s Event=%s Status=%s TargetURL=%s\n",
 			i+1, w.ID, w.Name, w.Resource, w.Event, w.Status, w.TargetURL)
 	}
 }

@@ -669,8 +669,8 @@ func TestJWKToRSAPublicKeyTooSmall(t *testing.T) {
 	smallKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	jwk := &JWK{
 		Kty: "RSA",
-		N:   base64.RawURLEncoding.EncodeToString(smallKey.PublicKey.N.Bytes()),
-		E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(smallKey.PublicKey.E)).Bytes()),
+		N:   base64.RawURLEncoding.EncodeToString(smallKey.N.Bytes()),
+		E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(smallKey.E)).Bytes()),
 	}
 
 	_, err := jwkToRSAPublicKey(jwk)

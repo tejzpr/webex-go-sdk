@@ -122,7 +122,7 @@ func TestFunctionalPeopleListByEmail(t *testing.T) {
 
 	t.Logf("Found %d people matching email %s", len(page.Items), me.Emails[0])
 	for i, p := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s DisplayName=%q Status=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s DisplayName=%q Status=%s\n",
 			i+1, p.ID, p.DisplayName, p.Status)
 	}
 }
@@ -163,7 +163,7 @@ func TestFunctionalPeopleBatcher(t *testing.T) {
 	}
 	t.Logf("BatchRequest returned %d persons", len(persons.Items))
 	for i, p := range persons.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s DisplayName=%q\n", i+1, p.ID, p.DisplayName)
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s DisplayName=%q\n", i+1, p.ID, p.DisplayName)
 	}
 }
 

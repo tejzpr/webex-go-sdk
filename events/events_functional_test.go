@@ -63,13 +63,13 @@ func TestFunctionalEventsList(t *testing.T) {
 
 	t.Logf("Found %d events from the last 7 days", len(page.Items))
 	for i, e := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Resource=%s Type=%s ActorID=%s Created=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Resource=%s Type=%s ActorID=%s Created=%s\n",
 			i+1, e.ID, e.Resource, e.Type, e.ActorID, e.Created.Format(time.RFC3339))
 		if e.Data.RoomID != "" {
-			fmt.Fprintf(os.Stdout, "    RoomID: %s\n", e.Data.RoomID)
+			_, _ = fmt.Fprintf(os.Stdout, "    RoomID: %s\n", e.Data.RoomID)
 		}
 		if e.Data.PersonEmail != "" {
-			fmt.Fprintf(os.Stdout, "    PersonEmail: %s\n", e.Data.PersonEmail)
+			_, _ = fmt.Fprintf(os.Stdout, "    PersonEmail: %s\n", e.Data.PersonEmail)
 		}
 	}
 }
@@ -97,7 +97,7 @@ func TestFunctionalEventsListByResource(t *testing.T) {
 			}
 			t.Logf("Resource %s: found %d events", resource, len(page.Items))
 			for i, e := range page.Items {
-				fmt.Fprintf(os.Stdout, "  [%d] Type=%s ActorID=%s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "  [%d] Type=%s ActorID=%s\n",
 					i+1, e.Type, e.ActorID)
 			}
 		})

@@ -364,7 +364,7 @@ func (c *Client) getUserID() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error fetching user info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -415,7 +415,7 @@ func (c *Client) getKMSInfo(userID string) (*KMSInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error fetching KMS info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

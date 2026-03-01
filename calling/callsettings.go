@@ -55,7 +55,7 @@ func (c *CallSettingsClient) doSettingsRequest(method, url string, body interfac
 	if err != nil {
 		return nil, fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

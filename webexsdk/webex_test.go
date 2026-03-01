@@ -188,7 +188,7 @@ func TestRequest(t *testing.T) {
 		// Write response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status": "success"}`)
+		_, _ = fmt.Fprintln(w, `{"status": "success"}`)
 	}))
 	defer server.Close()
 
@@ -215,7 +215,7 @@ func TestRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check response status code
 	if resp.StatusCode != http.StatusOK {
@@ -307,15 +307,15 @@ func TestPageNavigation(t *testing.T) {
 		case "/items":
 			// First page — Link header with next only
 			w.Header().Set("Link", `<`+serverURL+`/next-page>; rel="next"`)
-			fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
 		case "/next-page":
 			// Second page — Link header with prev only
 			w.Header().Set("Link", `<`+serverURL+`/prev-page>; rel="prev"`)
-			fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
 		case "/prev-page":
 			// Back to first page — Link header with next only
 			w.Header().Set("Link", `<`+serverURL+`/next-page>; rel="next"`)
-			fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -448,7 +448,7 @@ func TestRequestMultipart(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"id": "msg-123"}`)
+		_, _ = fmt.Fprintln(w, `{"id": "msg-123"}`)
 	}))
 	defer server.Close()
 
@@ -474,7 +474,7 @@ func TestRequestMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMultipart failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
@@ -524,11 +524,11 @@ func TestRequest_Retries429(t *testing.T) {
 		if attempts == 1 {
 			w.Header().Set("Retry-After", "0")
 			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprintln(w, `{"message":"rate limited"}`)
+			_, _ = fmt.Fprintln(w, `{"message":"rate limited"}`)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	}))
 	defer server.Close()
 
@@ -547,7 +547,7 @@ func TestRequest_Retries429(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
@@ -563,11 +563,11 @@ func TestRequest_Retries502(t *testing.T) {
 		attempts++
 		if attempts <= 2 {
 			w.WriteHeader(http.StatusBadGateway)
-			fmt.Fprintln(w, `{"message":"bad gateway"}`)
+			_, _ = fmt.Fprintln(w, `{"message":"bad gateway"}`)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	}))
 	defer server.Close()
 
@@ -586,7 +586,7 @@ func TestRequest_Retries502(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
@@ -604,11 +604,11 @@ func TestRequest_Retries423Locked(t *testing.T) {
 		if attempts == 1 {
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusLocked)
-			fmt.Fprintln(w, `{"message":"file is being scanned"}`)
+			_, _ = fmt.Fprintln(w, `{"message":"file is being scanned"}`)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	}))
 	defer server.Close()
 
@@ -627,7 +627,7 @@ func TestRequest_Retries423Locked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
@@ -642,7 +642,7 @@ func TestRequest_NoRetryOn400(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintln(w, `{"message":"bad request"}`)
+		_, _ = fmt.Fprintln(w, `{"message":"bad request"}`)
 	}))
 	defer server.Close()
 
@@ -661,7 +661,7 @@ func TestRequest_NoRetryOn400(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expected 400, got %d", resp.StatusCode)
@@ -676,7 +676,7 @@ func TestRequest_NoRetryOn401(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintln(w, `{"message":"unauthorized"}`)
+		_, _ = fmt.Fprintln(w, `{"message":"unauthorized"}`)
 	}))
 	defer server.Close()
 
@@ -695,7 +695,7 @@ func TestRequest_NoRetryOn401(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if attempts != 1 {
 		t.Errorf("Expected 1 attempt (no retry for 401), got %d", attempts)
@@ -707,7 +707,7 @@ func TestRequest_ExhaustsRetries(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintln(w, `{"message":"unavailable"}`)
+		_, _ = fmt.Fprintln(w, `{"message":"unavailable"}`)
 	}))
 	defer server.Close()
 
@@ -726,7 +726,7 @@ func TestRequest_ExhaustsRetries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("Expected 503, got %d", resp.StatusCode)
@@ -740,7 +740,7 @@ func TestRequest_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		w.Header().Set("Retry-After", "300")
-		fmt.Fprintln(w, `{"message":"rate limited"}`)
+		_, _ = fmt.Fprintln(w, `{"message":"rate limited"}`)
 	}))
 	defer server.Close()
 
@@ -770,11 +770,11 @@ func TestRequestMultipart_Retries429(t *testing.T) {
 		attempts++
 		if attempts == 1 {
 			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprintln(w, `{"message":"rate limited"}`)
+			_, _ = fmt.Fprintln(w, `{"message":"rate limited"}`)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"id":"msg-123"}`)
+		_, _ = fmt.Fprintln(w, `{"id":"msg-123"}`)
 	}))
 	defer server.Close()
 
@@ -796,7 +796,7 @@ func TestRequestMultipart_Retries429(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMultipart failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)

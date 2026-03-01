@@ -329,7 +329,7 @@ func (c *Client) RequestMultipartWithRetry(ctx context.Context, path string, fie
 		}
 
 		delay := retryDelay(resp, baseDelay, attempt)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		timer := time.NewTimer(delay)
 		select {
@@ -406,7 +406,7 @@ type Page struct {
 
 // ParseResponse parses an HTTP response into the given interface
 func ParseResponse(resp *http.Response, v interface{}) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -450,7 +450,7 @@ func (c *Client) RequestURLWithRetry(ctx context.Context, method, fullURL string
 		}
 
 		delay := retryDelay(resp, baseDelay, attempt)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		timer := time.NewTimer(delay)
 		select {

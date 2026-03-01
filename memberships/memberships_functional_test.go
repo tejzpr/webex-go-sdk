@@ -63,7 +63,7 @@ func TestFunctionalMembershipsLifecycle(t *testing.T) {
 	}
 
 	for i, m := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s PersonEmail=%s DisplayName=%q Moderator=%v\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s PersonEmail=%s DisplayName=%q Moderator=%v\n",
 			i+1, m.ID, m.PersonEmail, m.PersonDisplayName, m.IsModerator)
 	}
 
@@ -114,7 +114,7 @@ func TestFunctionalMembershipsListByPerson(t *testing.T) {
 
 	t.Logf("Found %d memberships for %s", len(page.Items), me.Emails[0])
 	for i, m := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] RoomID=%s Type=%s Moderator=%v\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] RoomID=%s Type=%s Moderator=%v\n",
 			i+1, m.RoomID, m.RoomType, m.IsModerator)
 	}
 }

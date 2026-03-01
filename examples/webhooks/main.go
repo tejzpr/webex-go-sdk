@@ -114,7 +114,7 @@ func main() {
 			if err != nil {
 				log.Printf("Failed to update webhook via direct request: %v\n", err)
 			} else {
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				body, _ := io.ReadAll(resp.Body)
 				fmt.Printf("Update response: %s\n", string(body))
 

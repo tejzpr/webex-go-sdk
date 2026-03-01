@@ -154,7 +154,7 @@ func (cc *CallingClient) DiscoverMobiusServers() error {
 		}
 
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("Mobius discovery returned %d for host %s: %s", resp.StatusCode, host, string(body))
@@ -246,7 +246,7 @@ func (cc *CallingClient) getRegionInfo() (*regionInfoResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -310,7 +310,7 @@ func (cc *CallingClient) registerWDMDevice() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error making WDM request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -505,7 +505,7 @@ func (cc *CallingClient) DeregisterAllDevices() (int, error) {
 		return 0, err
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
 		var errResp struct {

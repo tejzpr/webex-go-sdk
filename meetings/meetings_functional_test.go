@@ -64,21 +64,21 @@ func TestFunctionalListMeetings(t *testing.T) {
 
 	t.Logf("Found %d scheduled meetings between Feb 25-26, 2026", len(page.Items))
 	for i, m := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s Host=%s WebLink=%s\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s Host=%s WebLink=%s\n",
 			i+1, m.ID, m.Title, m.Start, m.End, m.MeetingType, m.State, m.HostEmail, m.WebLink)
 
 		// Log additional fields if available
 		if m.EnabledAutoRecordMeeting {
-			fmt.Fprintf(os.Stdout, "    Auto Recording: Enabled\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Auto Recording: Enabled\n")
 		}
 		if m.EnabledJoinBeforeHost {
-			fmt.Fprintf(os.Stdout, "    Join Before Host: Enabled (%d minutes)\n", m.JoinBeforeHostMinutes)
+			_, _ = fmt.Fprintf(os.Stdout, "    Join Before Host: Enabled (%d minutes)\n", m.JoinBeforeHostMinutes)
 		}
 		if len(m.IntegrationTags) > 0 {
-			fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", m.IntegrationTags)
+			_, _ = fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", m.IntegrationTags)
 		}
 		if m.Telephony != nil && m.Telephony.AccessCode != "" {
-			fmt.Fprintf(os.Stdout, "    Telephony Access Code: %s\n", m.Telephony.AccessCode)
+			_, _ = fmt.Fprintf(os.Stdout, "    Telephony Access Code: %s\n", m.Telephony.AccessCode)
 		}
 	}
 
@@ -98,26 +98,26 @@ func TestFunctionalListMeetings(t *testing.T) {
 
 	t.Logf("Found %d ended meeting instances between Feb 25-26, 2026", len(endedPage.Items))
 	for i, m := range endedPage.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s Host=%s HasRecording=%v HasTranscription=%v\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s Host=%s HasRecording=%v HasTranscription=%v\n",
 			i+1, m.ID, m.Title, m.Start, m.End, m.MeetingType, m.State, m.HostEmail, m.HasRecording, m.HasTranscription)
 
 		// Log additional fields for ended meetings
 		if m.MeetingNumber != "" {
-			fmt.Fprintf(os.Stdout, "    Meeting Number: %s\n", m.MeetingNumber)
+			_, _ = fmt.Fprintf(os.Stdout, "    Meeting Number: %s\n", m.MeetingNumber)
 		}
 		if m.SiteURL != "" {
-			fmt.Fprintf(os.Stdout, "    Site URL: %s\n", m.SiteURL)
+			_, _ = fmt.Fprintf(os.Stdout, "    Site URL: %s\n", m.SiteURL)
 		}
 		if m.HasSummary {
-			fmt.Fprintf(os.Stdout, "    Summary: Available\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Summary: Available\n")
 		}
 		if m.HasClosedCaption {
-			fmt.Fprintf(os.Stdout, "    Closed Caption: Available\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Closed Caption: Available\n")
 		}
 		if len(m.TrackingCodes) > 0 {
-			fmt.Fprintf(os.Stdout, "    Tracking Codes: %d entries\n", len(m.TrackingCodes))
+			_, _ = fmt.Fprintf(os.Stdout, "    Tracking Codes: %d entries\n", len(m.TrackingCodes))
 			for _, tc := range m.TrackingCodes {
-				fmt.Fprintf(os.Stdout, "      - %s: %s\n", tc.Name, tc.Value)
+				_, _ = fmt.Fprintf(os.Stdout, "      - %s: %s\n", tc.Name, tc.Value)
 			}
 		}
 	}
@@ -290,20 +290,20 @@ func TestFunctionalListParticipants(t *testing.T) {
 		t.Logf("Found %d participants for meeting %s", len(participants.Items), meeting.ID)
 
 		for i, p := range participants.Items {
-			fmt.Fprintf(os.Stdout, "[%d] ID=%s Email=%s DisplayName=%q Host=%v CoHost=%v State=%s\n",
+			_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Email=%s DisplayName=%q Host=%v CoHost=%v State=%s\n",
 				i+1, p.ID, p.Email, p.DisplayName, p.Host, p.CoHost, p.State)
 
 			// Show additional participant details
 			if p.JoinedTime != "" {
-				fmt.Fprintf(os.Stdout, "    Joined: %s\n", p.JoinedTime)
+				_, _ = fmt.Fprintf(os.Stdout, "    Joined: %s\n", p.JoinedTime)
 			}
 			if p.LeftTime != "" {
-				fmt.Fprintf(os.Stdout, "    Left: %s\n", p.LeftTime)
+				_, _ = fmt.Fprintf(os.Stdout, "    Left: %s\n", p.LeftTime)
 			}
 			if len(p.Devices) > 0 {
-				fmt.Fprintf(os.Stdout, "    Devices: %d\n", len(p.Devices))
+				_, _ = fmt.Fprintf(os.Stdout, "    Devices: %d\n", len(p.Devices))
 				for _, d := range p.Devices {
-					fmt.Fprintf(os.Stdout, "      - %s (Audio: %s)\n", d.DeviceType, d.AudioType)
+					_, _ = fmt.Fprintf(os.Stdout, "      - %s (Audio: %s)\n", d.DeviceType, d.AudioType)
 				}
 			}
 		}
@@ -396,7 +396,7 @@ func TestFunctionalListAllMeetingTypes(t *testing.T) {
 			t.Logf("%s: Found %d meetings (%s)", tc.name, len(page.Items), tc.description)
 
 			for i, m := range page.Items {
-				fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s\n",
+				_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Start=%s End=%s Type=%s State=%s\n",
 					i+1, m.ID, m.Title, m.Start, m.End, m.MeetingType, m.State)
 			}
 		})
@@ -446,52 +446,52 @@ func TestFunctionalListTomorrowMeetings(t *testing.T) {
 
 	t.Logf("Found %d meetings scheduled for tomorrow", len(page.Items))
 	for i, meeting := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q\n",
 			i+1, meeting.ID, meeting.Title)
 
 		// Log additional meeting details
 		if meeting.Start != "" {
-			fmt.Fprintf(os.Stdout, "    Start: %s\n", meeting.Start)
+			_, _ = fmt.Fprintf(os.Stdout, "    Start: %s\n", meeting.Start)
 		}
 		if meeting.End != "" {
-			fmt.Fprintf(os.Stdout, "    End: %s\n", meeting.End)
+			_, _ = fmt.Fprintf(os.Stdout, "    End: %s\n", meeting.End)
 		}
 		if meeting.State != "" {
-			fmt.Fprintf(os.Stdout, "    State: %s\n", meeting.State)
+			_, _ = fmt.Fprintf(os.Stdout, "    State: %s\n", meeting.State)
 		}
 		if meeting.MeetingType != "" {
-			fmt.Fprintf(os.Stdout, "    Type: %s\n", meeting.MeetingType)
+			_, _ = fmt.Fprintf(os.Stdout, "    Type: %s\n", meeting.MeetingType)
 		}
 		if meeting.HostEmail != "" {
-			fmt.Fprintf(os.Stdout, "    Host: %s\n", meeting.HostEmail)
+			_, _ = fmt.Fprintf(os.Stdout, "    Host: %s\n", meeting.HostEmail)
 		}
 		if meeting.EnabledAutoRecordMeeting {
-			fmt.Fprintf(os.Stdout, "    Auto Record: Enabled\n")
+			_, _ = fmt.Fprintf(os.Stdout, "    Auto Record: Enabled\n")
 		}
 		if meeting.JoinBeforeHostMinutes > 0 {
-			fmt.Fprintf(os.Stdout, "    Join Before Host: %d minutes\n", meeting.JoinBeforeHostMinutes)
+			_, _ = fmt.Fprintf(os.Stdout, "    Join Before Host: %d minutes\n", meeting.JoinBeforeHostMinutes)
 		}
 		if len(meeting.IntegrationTags) > 0 {
-			fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", meeting.IntegrationTags)
+			_, _ = fmt.Fprintf(os.Stdout, "    Integration Tags: %v\n", meeting.IntegrationTags)
 		}
 		if meeting.MeetingNumber != "" {
-			fmt.Fprintf(os.Stdout, "    Meeting Number: %s\n", meeting.MeetingNumber)
+			_, _ = fmt.Fprintf(os.Stdout, "    Meeting Number: %s\n", meeting.MeetingNumber)
 		}
 		if meeting.SiteURL != "" {
-			fmt.Fprintf(os.Stdout, "    Site URL: %s\n", meeting.SiteURL)
+			_, _ = fmt.Fprintf(os.Stdout, "    Site URL: %s\n", meeting.SiteURL)
 		}
 		if len(meeting.Invitees) > 0 {
-			fmt.Fprintf(os.Stdout, "    Invitees (%d):\n", len(meeting.Invitees))
+			_, _ = fmt.Fprintf(os.Stdout, "    Invitees (%d):\n", len(meeting.Invitees))
 			for j, invitee := range meeting.Invitees {
 				if j < 5 { // Limit to first 5 invitees
-					fmt.Fprintf(os.Stdout, "      - %s (%s)\n", invitee.DisplayName, invitee.Email)
+					_, _ = fmt.Fprintf(os.Stdout, "      - %s (%s)\n", invitee.DisplayName, invitee.Email)
 				}
 			}
 			if len(meeting.Invitees) > 5 {
-				fmt.Fprintf(os.Stdout, "      ... and %d more invitees\n", len(meeting.Invitees)-5)
+				_, _ = fmt.Fprintf(os.Stdout, "      ... and %d more invitees\n", len(meeting.Invitees)-5)
 			}
 		}
-		fmt.Fprintf(os.Stdout, "\n")
+		_, _ = fmt.Fprintf(os.Stdout, "\n")
 	}
 }
 

@@ -648,7 +648,7 @@ func (c *Call) postCall(roapMsg *RoapMessage) (*MobiusCallResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error making call request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -703,7 +703,7 @@ func (c *Call) deleteCall() error {
 	if err != nil {
 		return fmt.Errorf("error making delete request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return nil
 }
@@ -740,7 +740,7 @@ func (c *Call) postToMobius(url string, payload interface{}) error {
 	if err != nil {
 		return fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)

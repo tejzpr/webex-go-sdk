@@ -100,7 +100,7 @@ func TestFunctionalRoomsList(t *testing.T) {
 
 	t.Logf("Found %d rooms", len(page.Items))
 	for i, r := range page.Items {
-		fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Type=%s Locked=%v\n",
+		_, _ = fmt.Fprintf(os.Stdout, "[%d] ID=%s Title=%q Type=%s Locked=%v\n",
 			i+1, r.ID, r.Title, r.Type, r.IsLocked)
 	}
 }
@@ -121,7 +121,7 @@ func TestFunctionalRoomsListByType(t *testing.T) {
 			}
 			t.Logf("Type %s: found %d rooms", roomType, len(page.Items))
 			for i, r := range page.Items {
-				fmt.Fprintf(os.Stdout, "  [%d] %q (type=%s)\n", i+1, r.Title, r.Type)
+				_, _ = fmt.Fprintf(os.Stdout, "  [%d] %q (type=%s)\n", i+1, r.Title, r.Type)
 			}
 		})
 	}

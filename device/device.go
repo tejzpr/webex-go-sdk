@@ -151,7 +151,7 @@ func (c *Client) Register() error {
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read the response
 	respBody, err := io.ReadAll(resp.Body)
@@ -221,7 +221,7 @@ func (c *Client) Unregister() error {
 	if err != nil {
 		return fmt.Errorf("error sending request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check for error
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
@@ -376,7 +376,7 @@ func (c *Client) Refresh() error {
 	if err != nil {
 		return fmt.Errorf("error sending refresh request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check if there was no change (304 Not Modified)
 	if resp.StatusCode == http.StatusNotModified {

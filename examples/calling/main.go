@@ -477,7 +477,7 @@ func handleDeregisterAll(w http.ResponseWriter, r *http.Request) {
 	// Also clean up local state
 	state.mu.Lock()
 	if state.callingClient != nil {
-		state.callingClient.Shutdown()
+		_ = state.callingClient.Shutdown()
 	}
 	state.callingClient = nil
 	state.line = nil

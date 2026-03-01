@@ -288,14 +288,14 @@ func TestModulePagination_WithLinkHeaders(t *testing.T) {
 			if r.URL.Query().Get("after") == "cursor1" {
 				// Second page - no Link header (last page)
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprintln(w, `{"items": [{"id": "room3", "title": "Room 3"}]}`)
+				_, _ = fmt.Fprintln(w, `{"items": [{"id": "room3", "title": "Room 3"}]}`)
 				return
 			}
 			// First page
 			nextURL := fmt.Sprintf("%s/rooms?max=2&after=cursor1", serverURL)
 			w.Header().Set("Link", fmt.Sprintf(`<%s>; rel="next"`, nextURL))
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"items": [{"id": "room1", "title": "Room 1"}, {"id": "room2", "title": "Room 2"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "room1", "title": "Room 1"}, {"id": "room2", "title": "Room 2"}]}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -365,7 +365,7 @@ func TestRequestURL_FullURL(t *testing.T) {
 			t.Errorf("Expected Bearer auth, got %q", r.Header.Get("Authorization"))
 		}
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
 	}))
 	defer server.Close()
 
