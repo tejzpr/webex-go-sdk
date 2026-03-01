@@ -387,3 +387,141 @@ func TestRequestURL_FullURL(t *testing.T) {
 		t.Errorf("Expected 200, got %d", resp.StatusCode)
 	}
 }
+
+// --- PageFromCursor tests ---
+
+func TestPageFromCursor_DirectNavigation(t *testing.T) {
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.URL.Path == "/v1/resources" && r.URL.Query().Get("cursor") == "":
+			// Page 1
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/resources?cursor=page2>; rel="next"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item1"}, {"id": "item2"}]}`)
+		case r.URL.Path == "/v1/resources" && r.URL.Query().Get("cursor") == "page2":
+			// Page 2
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/resources?cursor=page3>; rel="next", <%s/v1/resources>; rel="prev"`, serverURL, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item3"}, {"id": "item4"}]}`)
+		case r.URL.Path == "/v1/resources" && r.URL.Query().Get("cursor") == "page3":
+			// Page 3 (last)
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/resources?cursor=page2>; rel="prev"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item5"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	config := &Config{
+		BaseURL:    server.URL + "/v1",
+		HttpClient: server.Client(),
+	}
+	client, _ := NewClient("test-token", config)
+
+	// Jump directly to page 2 — skip page 1 entirely
+	page2, err := client.PageFromCursor(serverURL + "/v1/resources?cursor=page2")
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+	if len(page2.Items) != 2 {
+		t.Errorf("Expected 2 items on page 2, got %d", len(page2.Items))
+	}
+	if !page2.HasNext {
+		t.Error("Expected HasNext=true on page 2")
+	}
+	if !page2.HasPrev {
+		t.Error("Expected HasPrev=true on page 2")
+	}
+
+	// Chain: navigate from page 2 to page 3 using Next()
+	page3, err := page2.Next()
+	if err != nil {
+		t.Fatalf("Next() from page 2 failed: %v", err)
+	}
+	if len(page3.Items) != 1 {
+		t.Errorf("Expected 1 item on page 3, got %d", len(page3.Items))
+	}
+	if page3.HasNext {
+		t.Error("Expected HasNext=false on page 3 (last page)")
+	}
+
+	// Chain: navigate back from page 3 to page 2 using Prev()
+	backToPage2, err := page3.Prev()
+	if err != nil {
+		t.Fatalf("Prev() from page 3 failed: %v", err)
+	}
+	if len(backToPage2.Items) != 2 {
+		t.Errorf("Expected 2 items going back to page 2, got %d", len(backToPage2.Items))
+	}
+}
+
+func TestPageFromCursor_EmptyCursorError(t *testing.T) {
+	config := &Config{BaseURL: "https://example.com"}
+	client, _ := NewClient("test-token", config)
+
+	_, err := client.PageFromCursor("")
+	if err == nil {
+		t.Fatal("Expected error for empty cursor URL")
+	}
+	if err.Error() != "cursor URL is empty" {
+		t.Errorf("Expected 'cursor URL is empty' error, got: %v", err)
+	}
+}
+
+func TestPageFromCursor_SaveAndResume(t *testing.T) {
+	// Simulates saving a cursor from one pagination session and resuming later
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch {
+		case r.URL.Path == "/v1/items" && r.URL.Query().Get("cursor") == "":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/items?cursor=abc123>; rel="next"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "a"}]}`)
+		case r.URL.Path == "/v1/items" && r.URL.Query().Get("cursor") == "abc123":
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "b"}, {"id": "c"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	baseURL, _ := url.Parse(server.URL + "/v1")
+	config := &Config{
+		BaseURL:    server.URL + "/v1",
+		HttpClient: server.Client(),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	// Session 1: get first page, save cursor
+	resp, _ := client.Request(http.MethodGet, "items", nil, nil)
+	page1, err := NewPage(resp, client, "items")
+	if err != nil {
+		t.Fatalf("NewPage failed: %v", err)
+	}
+	savedCursor := page1.NextPage
+	if savedCursor == "" {
+		t.Fatal("Expected a non-empty cursor to save")
+	}
+	t.Logf("Saved cursor: %s", savedCursor)
+
+	// Session 2: create a new client, resume from cursor
+	client2, _ := NewClient("test-token", config)
+	client2.BaseURL = baseURL
+
+	resumedPage, err := client2.PageFromCursor(savedCursor)
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+	if len(resumedPage.Items) != 2 {
+		t.Errorf("Expected 2 items on resumed page, got %d", len(resumedPage.Items))
+	}
+	if resumedPage.HasNext {
+		t.Error("Expected HasNext=false on last page")
+	}
+}

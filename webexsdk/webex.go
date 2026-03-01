@@ -645,3 +645,27 @@ func (p *Page) Prev() (*Page, error) {
 
 	return NewPage(resp, p.Client, p.Resource)
 }
+
+// PageFromCursor fetches a page directly from a cursor URL (e.g., a previously
+// saved NextPage or PrevPage). This enables direct navigation to any page without
+// sequential traversal — useful for bookmarking or resuming pagination.
+//
+// Usage:
+//
+//	page, _ := webhooksClient.List(&ListOptions{Max: 10})
+//	cursor := page.NextPage  // save this to a database, cache, etc.
+//
+//	// Later — jump directly to that page:
+//	resumedPage, _ := client.PageFromCursor(cursor)
+func (c *Client) PageFromCursor(cursorURL string) (*Page, error) {
+	if cursorURL == "" {
+		return nil, fmt.Errorf("cursor URL is empty")
+	}
+
+	resp, err := c.RequestURL(http.MethodGet, cursorURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPage(resp, c, "")
+}

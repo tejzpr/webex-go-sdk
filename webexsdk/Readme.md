@@ -106,6 +106,33 @@ if page.HasPrev {
 | `NextPage` | `string` | Absolute URL for the next page |
 | `PrevPage` | `string` | Absolute URL for the previous page |
 
+### Direct Cursor Navigation
+
+Save a cursor URL and jump directly to any page later — no sequential traversal needed:
+
+```go
+// Session 1: paginate and save a cursor
+page, _ := webhooksClient.List(&webhooks.ListOptions{Max: 10})
+cursor := page.NextPage  // save this (e.g., to a database or cache)
+
+// Session 2 (later): jump directly to the saved page
+resumedPage, _ := client.PageFromCursor(cursor)
+for _, raw := range resumedPage.Items {
+    // process items
+}
+
+// Continue pagination from the resumed position
+if resumedPage.HasNext {
+    nextPage, _ := resumedPage.Next()
+    // ...
+}
+```
+
+This is ideal for:
+- **Bookmarking** a position in a large result set
+- **Resuming** pagination after a process restart
+- **Skipping** pages you've already processed
+
 ## Structured Errors
 
 All API errors are returned as typed structs. The base type is `APIError`, with specific sub-types for common HTTP status codes:
@@ -186,6 +213,7 @@ if err != nil {
 | `RequestURLWithRetry(ctx, method, fullURL, body)` | Absolute URL request with context + retry |
 | `RequestMultipart(path, fields, files)` | Multipart form-data POST with retry |
 | `RequestMultipartWithRetry(ctx, path, fields, files)` | Multipart POST with context + retry |
+| `PageFromCursor(cursorURL)` | Direct navigation to a page via saved cursor URL |
 
 ## Plugin System
 
