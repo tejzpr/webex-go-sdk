@@ -144,3 +144,47 @@ func TestFunctionalTeamMembershipsNotFound(t *testing.T) {
 		t.Log("Correctly identified as NotFound error")
 	}
 }
+
+// TestFunctionalTeamMembershipsCursorNavigation tests PageFromCursor with team memberships
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalTeamMembershipsCursorNavigation -v ./teammemberships/
+func TestFunctionalTeamMembershipsCursorNavigation(t *testing.T) {
+	client := functionalClient(t)
+	tmClient := New(client, nil)
+	teamsClient := teams.New(client, nil)
+
+	// Create a team to have at least one team membership
+	team, err := teamsClient.Create(&teams.Team{Name: "SDK TeamMemberships Cursor Test"})
+	if err != nil {
+		t.Fatalf("Failed to create team: %v", err)
+	}
+	defer func() {
+		if err := teamsClient.Delete(team.ID); err != nil {
+			t.Logf("Warning: cleanup delete team failed: %v", err)
+		}
+	}()
+
+	page, err := tmClient.List(&ListOptions{TeamID: team.ID, Max: 1})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if !page.HasNext {
+		t.Log("Only one page of results — skipping cursor navigation test")
+		return
+	}
+
+	cursor := page.NextPage
+	t.Logf("Saved cursor: %s", cursor)
+
+	directPage, err := client.PageFromCursor(cursor)
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+
+	t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+	if len(directPage.Items) == 0 {
+		t.Error("Expected items from cursor navigation")
+	}
+}

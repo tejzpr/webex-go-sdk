@@ -10,6 +10,7 @@ package roomtabs
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -196,5 +197,62 @@ func TestFunctionalRoomTabsNotFound(t *testing.T) {
 		}
 	} else {
 		t.Logf("Error is not an APIError: %v", err)
+	}
+}
+
+// TestFunctionalRoomTabsCursorNavigation tests PageFromCursor with room tabs
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalRoomTabsCursorNavigation -v ./roomtabs/
+func TestFunctionalRoomTabsCursorNavigation(t *testing.T) {
+	client := functionalClient(t)
+	tabsClient := New(client, nil)
+	roomsClient := rooms.New(client, nil)
+
+	room, err := roomsClient.Create(&rooms.Room{Title: "SDK RoomTabs Cursor Test"})
+	if err != nil {
+		t.Fatalf("Failed to create test room: %v", err)
+	}
+	defer func() {
+		if err := roomsClient.Delete(room.ID); err != nil {
+			t.Logf("Warning: cleanup room delete failed: %v", err)
+		}
+	}()
+
+	// Create 3 tabs so pagination with Max=1 yields multiple pages
+	for i := 0; i < 3; i++ {
+		tab, err := tabsClient.Create(&RoomTab{
+			RoomID:      room.ID,
+			DisplayName: fmt.Sprintf("Cursor Tab %d", i+1),
+			ContentURL:  fmt.Sprintf("https://www.example.com/cursor-%d", i+1),
+		})
+		if err != nil {
+			skipOnAPIError(t, err, "bots may not support room tabs")
+			t.Fatalf("Create tab %d failed: %v", i+1, err)
+		}
+		defer tabsClient.Delete(tab.ID)
+	}
+
+	page, err := tabsClient.List(&ListOptions{RoomID: room.ID, Max: 1})
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if !page.HasNext {
+		t.Log("Only one page of results — skipping cursor navigation test")
+		return
+	}
+
+	cursor := page.NextPage
+	t.Logf("Saved cursor: %s", cursor)
+
+	directPage, err := client.PageFromCursor(cursor)
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+
+	t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+	if len(directPage.Items) == 0 {
+		t.Error("Expected items from cursor navigation")
 	}
 }

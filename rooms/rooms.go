@@ -151,7 +151,7 @@ func (c *Client) List(options *ListOptions) (*RoomsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "rooms")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceRooms)
 	if err != nil {
 		return nil, err
 	}

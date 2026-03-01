@@ -339,7 +339,7 @@ func TestPageNavigation(t *testing.T) {
 		t.Fatalf("Failed to get first page: %v", err)
 	}
 
-	page, err := NewPage(resp, client, "items")
+	page, err := NewPage(resp, client, ResourceItems)
 	if err != nil {
 		t.Fatalf("Failed to create page: %v", err)
 	}

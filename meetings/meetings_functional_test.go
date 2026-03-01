@@ -589,4 +589,19 @@ func TestFunctionalMeetingsListPagination(t *testing.T) {
 	}
 
 	t.Logf("Total: %d items across %d pages", totalItems, pageCount)
+
+	// Test direct cursor navigation (PageFromCursor)
+	if page2Cursor != "" {
+		t.Log("Testing direct cursor navigation to page 2...")
+		directPage, err := client.PageFromCursor(page2Cursor)
+		if err != nil {
+			t.Fatalf("PageFromCursor failed: %v", err)
+		}
+		t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+		if len(directPage.Items) == 0 {
+			t.Error("Expected items from direct cursor navigation")
+		}
+	} else {
+		t.Log("Skipping cursor navigation test — only one page of results")
+	}
 }

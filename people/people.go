@@ -384,7 +384,7 @@ func (c *Client) List(options *ListOptions) (*PeoplePage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "people")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourcePeople)
 	if err != nil {
 		return nil, err
 	}

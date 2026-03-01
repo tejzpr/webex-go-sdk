@@ -391,6 +391,26 @@ func (c *Client) doMultipartRequest(ctx context.Context, path string, fields []M
 	return c.httpClient.Do(req)
 }
 
+// Resource is a typed string identifying a Webex API resource collection.
+type Resource string
+
+const (
+	ResourceRooms               Resource = "rooms"
+	ResourceMessages            Resource = "messages"
+	ResourceTeams               Resource = "teams"
+	ResourceWebhooks            Resource = "webhooks"
+	ResourceMeetings            Resource = "meetings"
+	ResourceMeetingParticipants Resource = "meetingParticipants"
+	ResourceMemberships         Resource = "memberships"
+	ResourcePeople              Resource = "people"
+	ResourceTeamMemberships     Resource = "team/memberships"
+	ResourceRecordings          Resource = "recordings"
+	ResourceTranscripts         Resource = "meetingTranscripts"
+	ResourceEvents              Resource = "events"
+	ResourceRoomTabs            Resource = "room/tabs"
+	ResourceItems               Resource = "items"
+)
+
 // Page represents a paginated response from the Webex API.
 // Pagination follows RFC 5988 (Web Linking) — next/prev URLs are parsed
 // from the response's Link header.
@@ -401,7 +421,7 @@ type Page struct {
 	HasNext  bool              `json:"-"`
 	HasPrev  bool              `json:"-"`
 	Client   *Client           `json:"-"`
-	Resource string            `json:"-"`
+	Resource Resource          `json:"-"`
 }
 
 // ParseResponse parses an HTTP response into the given interface
@@ -594,7 +614,7 @@ func trimSpace(s string) string {
 // NewPage creates a new Page from an HTTP response.
 // It parses the Link header (RFC 5988) for pagination URLs and
 // the JSON body for the items array.
-func NewPage(resp *http.Response, client *Client, resource string) (*Page, error) {
+func NewPage(resp *http.Response, client *Client, resource Resource) (*Page, error) {
 	// Parse Link header before reading/closing the body
 	linkHeader := resp.Header.Get("Link")
 	links := parseLinkHeader(linkHeader)

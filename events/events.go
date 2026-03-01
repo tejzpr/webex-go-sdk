@@ -139,7 +139,7 @@ func (c *Client) List(options *ListOptions) (*EventsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "events")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceEvents)
 	if err != nil {
 		return nil, err
 	}

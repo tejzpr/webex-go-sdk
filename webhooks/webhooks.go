@@ -81,7 +81,7 @@ func (c *Client) List(options *ListOptions) (*WebhooksPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "webhooks")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceWebhooks)
 	if err != nil {
 		return nil, err
 	}

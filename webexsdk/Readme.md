@@ -133,6 +133,25 @@ This is ideal for:
 - **Resuming** pagination after a process restart
 - **Skipping** pages you've already processed
 
+#### Supported Modules
+
+All modules with list/pagination endpoints embed `*Page` and support `PageFromCursor`:
+
+| Module | Page Type | List Method |
+|--------|-----------|-------------|
+| `rooms` | `RoomsPage` | `List(&ListOptions{})` |
+| `messages` | `MessagesPage` | `List(&ListOptions{})` |
+| `teams` | `TeamsPage` | `List(&ListOptions{})` |
+| `webhooks` | `WebhooksPage` | `List(&ListOptions{})` |
+| `meetings` | `MeetingsPage` | `List(&ListOptions{})` |
+| `events` | `EventsPage` | `List(&ListOptions{})` |
+| `memberships` | `MembershipsPage` | `List(&ListOptions{})` |
+| `teammemberships` | `TeamMembershipsPage` | `List(&ListOptions{})` |
+| `recordings` | `RecordingsPage` | `List(&ListOptions{})` |
+| `transcripts` | `TranscriptsPage` | `List(&ListOptions{})` |
+| `roomtabs` | `RoomTabsPage` | `List(&ListOptions{})` |
+| `people` | `PeoplePage` | `List(&ListOptions{})` |
+
 ## Structured Errors
 
 All API errors are returned as typed structs. The base type is `APIError`, with specific sub-types for common HTTP status codes:

@@ -155,7 +155,7 @@ func (c *Client) List(options *ListOptions) (*RecordingsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "recordings")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceRecordings)
 	if err != nil {
 		return nil, err
 	}

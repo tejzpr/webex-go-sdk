@@ -209,7 +209,7 @@ func (c *Client) List(options *ListOptions) (*MessagesPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "messages")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceMessages)
 	if err != nil {
 		return nil, err
 	}

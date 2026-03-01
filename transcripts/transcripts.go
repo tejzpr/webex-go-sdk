@@ -159,7 +159,7 @@ func (c *Client) List(options *ListOptions) (*TranscriptsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "meetingTranscripts")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceTranscripts)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +264,7 @@ func (c *Client) ListSnippets(transcriptID string, options *SnippetListOptions) 
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, path)
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.Resource(path))
 	if err != nil {
 		return nil, err
 	}

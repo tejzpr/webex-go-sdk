@@ -117,7 +117,7 @@ func TestNewPage_LinkHeader(t *testing.T) {
 		t.Fatalf("Failed to get first page: %v", err)
 	}
 
-	page, err := NewPage(resp, client, "items")
+	page, err := NewPage(resp, client, ResourceItems)
 	if err != nil {
 		t.Fatalf("Failed to create page: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestNewPage_NoLinkHeader_EmptyPage(t *testing.T) {
 		t.Fatalf("Failed to get page: %v", err)
 	}
 
-	page, err := NewPage(resp, client, "items")
+	page, err := NewPage(resp, client, Resource("items"))
 	if err != nil {
 		t.Fatalf("Failed to create page: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestNewPage_EmptyPageWithLinkHeader(t *testing.T) {
 	client.BaseURL = baseURL
 
 	resp, _ := client.Request(http.MethodGet, "items", nil, nil)
-	page, err := NewPage(resp, client, "items")
+	page, err := NewPage(resp, client, Resource("items"))
 	if err != nil {
 		t.Fatalf("Failed: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestNewPage_NoNextError(t *testing.T) {
 	client.BaseURL = baseURL
 
 	resp, _ := client.Request(http.MethodGet, "items", nil, nil)
-	page, _ := NewPage(resp, client, "items")
+	page, _ := NewPage(resp, client, Resource("items"))
 
 	_, err := page.Next()
 	if err == nil {
@@ -317,7 +317,7 @@ func TestModulePagination_WithLinkHeaders(t *testing.T) {
 		t.Fatalf("Request failed: %v", err)
 	}
 
-	page, err := NewPage(resp, client, "rooms")
+	page, err := NewPage(resp, client, ResourceRooms)
 	if err != nil {
 		t.Fatalf("NewPage failed: %v", err)
 	}
@@ -500,7 +500,7 @@ func TestPageFromCursor_SaveAndResume(t *testing.T) {
 
 	// Session 1: get first page, save cursor
 	resp, _ := client.Request(http.MethodGet, "items", nil, nil)
-	page1, err := NewPage(resp, client, "items")
+	page1, err := NewPage(resp, client, Resource("items"))
 	if err != nil {
 		t.Fatalf("NewPage failed: %v", err)
 	}
@@ -523,5 +523,159 @@ func TestPageFromCursor_SaveAndResume(t *testing.T) {
 	}
 	if resumedPage.HasNext {
 		t.Error("Expected HasNext=false on last page")
+	}
+}
+
+// TestPageFromCursor_ContinuePagination verifies that pages returned by
+// PageFromCursor have working Next()/Prev() chains.
+func TestPageFromCursor_ContinuePagination(t *testing.T) {
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		cursor := r.URL.Query().Get("cursor")
+		switch {
+		case r.URL.Path == "/v1/items" && cursor == "":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/items?cursor=p2>; rel="next"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "1"}]}`)
+		case r.URL.Path == "/v1/items" && cursor == "p2":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/items?cursor=p3>; rel="next", <%s/v1/items>; rel="prev"`, serverURL, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "2"}]}`)
+		case r.URL.Path == "/v1/items" && cursor == "p3":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/items?cursor=p2>; rel="prev"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "3"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	config := &Config{
+		BaseURL:    server.URL + "/v1",
+		HttpClient: server.Client(),
+	}
+	client, _ := NewClient("test-token", config)
+
+	// Jump to page 2 via cursor
+	page2, err := client.PageFromCursor(serverURL + "/v1/items?cursor=p2")
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+	if len(page2.Items) != 1 {
+		t.Fatalf("Expected 1 item, got %d", len(page2.Items))
+	}
+
+	// Navigate forward to page 3
+	page3, err := page2.Next()
+	if err != nil {
+		t.Fatalf("Next() failed: %v", err)
+	}
+	if page3.HasNext {
+		t.Error("Expected HasNext=false on last page")
+	}
+
+	// Navigate backward to page 2
+	backTo2, err := page3.Prev()
+	if err != nil {
+		t.Fatalf("Prev() failed: %v", err)
+	}
+	if !backTo2.HasNext {
+		t.Error("Expected HasNext=true on page 2")
+	}
+	if !backTo2.HasPrev {
+		t.Error("Expected HasPrev=true on page 2")
+	}
+}
+
+// TestPageFromCursor_HTTPError verifies that PageFromCursor returns an error
+// when the server responds with an error status.
+func TestPageFromCursor_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = fmt.Fprintln(w, `{"message": "resource not found", "trackingId": "test-123"}`)
+	}))
+	defer server.Close()
+
+	config := &Config{
+		BaseURL:    server.URL,
+		HttpClient: server.Client(),
+		MaxRetries: 0, // no retries for test speed
+	}
+	client, _ := NewClient("test-token", config)
+
+	_, err := client.PageFromCursor(server.URL + "/v1/resources?cursor=gone")
+	if err == nil {
+		t.Fatal("Expected error for 404 response")
+	}
+	if !IsNotFound(err) {
+		t.Errorf("Expected NotFoundError, got: %v", err)
+	}
+}
+
+// TestPageFromCursor_MultiPageCollect verifies iterating all pages starting
+// from a cursor and collecting all items.
+func TestPageFromCursor_MultiPageCollect(t *testing.T) {
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		cursor := r.URL.Query().Get("cursor")
+		switch {
+		case r.URL.Path == "/v1/data" && cursor == "start":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/data?cursor=middle>; rel="next"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "a"}, {"id": "b"}]}`)
+		case r.URL.Path == "/v1/data" && cursor == "middle":
+			w.Header().Set("Link", fmt.Sprintf(`<%s/v1/data?cursor=end>; rel="next"`, serverURL))
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "c"}]}`)
+		case r.URL.Path == "/v1/data" && cursor == "end":
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "d"}, {"id": "e"}]}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	config := &Config{
+		BaseURL:    server.URL + "/v1",
+		HttpClient: server.Client(),
+	}
+	client, _ := NewClient("test-token", config)
+
+	// Start from "start" cursor and collect everything
+	page, err := client.PageFromCursor(serverURL + "/v1/data?cursor=start")
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+
+	var allItems []json.RawMessage
+	allItems = append(allItems, page.Items...)
+
+	for page.HasNext {
+		page, err = page.Next()
+		if err != nil {
+			t.Fatalf("Next() failed: %v", err)
+		}
+		allItems = append(allItems, page.Items...)
+	}
+
+	if len(allItems) != 5 {
+		t.Errorf("Expected 5 total items, got %d", len(allItems))
+	}
+
+	// Verify item IDs
+	expectedIDs := []string{"a", "b", "c", "d", "e"}
+	for i, raw := range allItems {
+		var item struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			t.Fatalf("Unmarshal failed at index %d: %v", i, err)
+		}
+		if item.ID != expectedIDs[i] {
+			t.Errorf("Item %d: expected ID %q, got %q", i, expectedIDs[i], item.ID)
+		}
 	}
 }

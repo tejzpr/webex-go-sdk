@@ -373,7 +373,7 @@ func (c *Client) List(options *ListOptions) (*MeetingsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "meetings")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceMeetings)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +527,7 @@ func (c *Client) ListParticipants(options *ParticipantListOptions) (*Participant
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "meetingParticipants")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceMeetingParticipants)
 	if err != nil {
 		return nil, err
 	}

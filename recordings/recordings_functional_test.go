@@ -133,7 +133,7 @@ func TestFunctionalListRecordingsByMeeting(t *testing.T) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	page, err := webexsdk.NewPage(resp, client, "meetings")
+	page, err := webexsdk.NewPage(resp, client, webexsdk.ResourceMeetings)
 	if err != nil {
 		skipOn403(t, err)
 		t.Fatalf("Failed to create page: %v", err)
@@ -439,4 +439,53 @@ func TestFunctionalRecordingsNotFound(t *testing.T) {
 	}
 	t.Logf("Got expected API error: status=%d message=%q trackingId=%s",
 		apiErr.StatusCode, apiErr.Message, apiErr.TrackingID)
+}
+
+// TestFunctionalRecordingsCursorNavigation tests PageFromCursor with recordings
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalRecordingsCursorNavigation -v ./recordings/
+func TestFunctionalRecordingsCursorNavigation(t *testing.T) {
+	token := os.Getenv("WEBEX_ACCESS_TOKEN")
+	if token == "" {
+		t.Fatal("WEBEX_ACCESS_TOKEN environment variable is required")
+	}
+
+	client, err := webexsdk.NewClient(token, &webexsdk.Config{
+		BaseURL: "https://webexapis.com/v1",
+		Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create Webex client: %v", err)
+	}
+
+	recordingsClient := New(client, nil)
+
+	page, err := recordingsClient.List(&ListOptions{
+		From: time.Now().AddDate(0, 0, -30).Format(time.RFC3339),
+		To:   time.Now().Format(time.RFC3339),
+		Max:  1,
+	})
+	if err != nil {
+		skipOn403(t, err)
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if !page.HasNext {
+		t.Log("Only one page of results — skipping cursor navigation test")
+		return
+	}
+
+	cursor := page.NextPage
+	t.Logf("Saved cursor: %s", cursor)
+
+	directPage, err := client.PageFromCursor(cursor)
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+
+	t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+	if len(directPage.Items) == 0 {
+		t.Error("Expected items from cursor navigation")
+	}
 }

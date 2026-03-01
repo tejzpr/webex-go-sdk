@@ -86,7 +86,7 @@ func (c *Client) List(options *ListOptions) (*TeamMembershipsPage, error) {
 		return nil, err
 	}
 
-	page, err := webexsdk.NewPage(resp, c.webexClient, "team/memberships")
+	page, err := webexsdk.NewPage(resp, c.webexClient, webexsdk.ResourceTeamMemberships)
 	if err != nil {
 		return nil, err
 	}

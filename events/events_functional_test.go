@@ -157,3 +157,40 @@ func TestFunctionalEventsNotFound(t *testing.T) {
 	t.Logf("Got expected API error: status=%d message=%q trackingId=%s",
 		apiErr.StatusCode, apiErr.Message, apiErr.TrackingID)
 }
+
+// TestFunctionalEventsCursorNavigation tests PageFromCursor with events
+// Run with:
+//
+//	WEBEX_ACCESS_TOKEN=<your-token> go test -tags functional -run TestFunctionalEventsCursorNavigation -v ./events/
+func TestFunctionalEventsCursorNavigation(t *testing.T) {
+	client := functionalClient(t)
+	eventsClient := New(client, nil)
+
+	page, err := eventsClient.List(&ListOptions{
+		From: time.Now().AddDate(0, 0, -7).Format(time.RFC3339),
+		To:   time.Now().Format(time.RFC3339),
+		Max:  1,
+	})
+	if err != nil {
+		skipOn403(t, err)
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if !page.HasNext {
+		t.Log("Only one page of results — skipping cursor navigation test")
+		return
+	}
+
+	cursor := page.NextPage
+	t.Logf("Saved cursor: %s", cursor)
+
+	directPage, err := client.PageFromCursor(cursor)
+	if err != nil {
+		t.Fatalf("PageFromCursor failed: %v", err)
+	}
+
+	t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+	if len(directPage.Items) == 0 {
+		t.Error("Expected items from cursor navigation")
+	}
+}

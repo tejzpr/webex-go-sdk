@@ -286,6 +286,13 @@ func TestFunctionalMessagesListPagination(t *testing.T) {
 	pageCount := 1
 	t.Logf("Page %d: %d items, hasNext=%v", pageCount, len(page.Items), page.HasNext)
 
+	// Save cursor for direct navigation test
+	var page2Cursor string
+	if page.HasNext {
+		page2Cursor = page.NextPage
+		t.Logf("Saved page 2 cursor: %s", page2Cursor)
+	}
+
 	for page.HasNext && pageCount < 10 {
 		nextPage, err := page.Next()
 		if err != nil {
@@ -298,6 +305,21 @@ func TestFunctionalMessagesListPagination(t *testing.T) {
 	}
 
 	t.Logf("Pagination complete: %d total items across %d pages", totalItems, pageCount)
+
+	// Test direct cursor navigation (PageFromCursor)
+	if page2Cursor != "" {
+		t.Log("Testing direct cursor navigation to page 2...")
+		directPage, err := client.PageFromCursor(page2Cursor)
+		if err != nil {
+			t.Fatalf("PageFromCursor failed: %v", err)
+		}
+		t.Logf("Direct cursor navigation: got %d items, hasNext=%v", len(directPage.Items), directPage.HasNext)
+		if len(directPage.Items) == 0 {
+			t.Error("Expected items from direct cursor navigation")
+		}
+	} else {
+		t.Log("Skipping cursor navigation test — only one page of results")
+	}
 }
 
 // TestFunctionalMessagesNotFound tests structured error on invalid message ID
