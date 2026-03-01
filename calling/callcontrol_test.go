@@ -114,7 +114,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 
 		track, err := me.AddAudioTrack()
 		if err != nil {
@@ -133,7 +133,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 
 		if me.IsMuted() {
 			t.Error("Should not be muted initially")
@@ -153,7 +153,7 @@ func TestMediaEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
 		}
-		defer me.Close()
+		defer func() { _ = me.Close() }()
 
 		_, err = me.AddAudioTrack()
 		if err != nil {
@@ -532,7 +532,7 @@ func TestCall(t *testing.T) {
 		if call.GetCorrelationID() == "" {
 			t.Error("Expected non-empty correlationID")
 		}
-		call.GetMedia().Close()
+		_ = call.GetMedia().Close()
 	})
 
 	t.Run("NewCall nil config", func(t *testing.T) {
@@ -550,7 +550,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		call.Mute()
 		if !call.IsMuted() {
@@ -569,7 +569,7 @@ func TestCall(t *testing.T) {
 			DeviceID:  "dev-1",
 			LineID:    "line-1",
 		})
-		defer call.GetMedia().Close()
+		defer func() { _ = call.GetMedia().Close() }()
 
 		err := call.Hold()
 		if err == nil {

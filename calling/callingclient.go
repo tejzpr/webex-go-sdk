@@ -534,7 +534,7 @@ func (cc *CallingClient) DeregisterAllDevices() (int, error) {
 					log.Printf("Failed to delete device %s: %v", dev.DeviceID, err)
 					continue
 				}
-				delResp.Body.Close()
+				_ = delResp.Body.Close()
 				log.Printf("Deleted device %s (status %d)", dev.DeviceID, delResp.StatusCode)
 				deleted++
 			}
@@ -557,7 +557,7 @@ func (cc *CallingClient) DeregisterAllDevices() (int, error) {
 			}
 			delResp, err := cc.core.GetHTTPClient().Do(delReq)
 			if err == nil {
-				delResp.Body.Close()
+				_ = delResp.Body.Close()
 				deleted++
 			}
 		}

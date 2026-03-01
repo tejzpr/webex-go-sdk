@@ -205,11 +205,11 @@ func TestNewPage_EmptyPageWithLinkHeader(t *testing.T) {
 		case "/items":
 			w.Header().Set("Link", fmt.Sprintf(`<%s/page2>; rel="next"`, serverURL))
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"items": [{"id": "item1"}]}`)
+			_, _ = fmt.Fprintln(w, `{"items": [{"id": "item1"}]}`)
 		case "/page2":
 			// Empty page, no Link header — end of pagination
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{"items": []}`)
+			_, _ = fmt.Fprintln(w, `{"items": []}`)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -249,7 +249,7 @@ func TestNewPage_EmptyPageWithLinkHeader(t *testing.T) {
 func TestNewPage_NoNextError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintln(w, `{"items": []}`)
+		_, _ = fmt.Fprintln(w, `{"items": []}`)
 	}))
 	defer server.Close()
 

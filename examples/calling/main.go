@@ -104,11 +104,11 @@ func main() {
 		// Close the audio bridge WebSocket so HandleSignaling unblocks
 		state.mu.Lock()
 		if state.activeWSConn != nil {
-			state.activeWSConn.Close()
+			_ = state.activeWSConn.Close()
 		}
 		if state.callingClient != nil {
 			log.Println("Auto-deregistering calling client...")
-			state.callingClient.Shutdown()
+			_ = state.callingClient.Shutdown()
 			log.Println("Calling client shut down.")
 		}
 		state.mu.Unlock()
@@ -137,7 +137,7 @@ func main() {
 func jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func jsonError(w http.ResponseWriter, status int, msg string) {
@@ -190,7 +190,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 func handleDisconnect(w http.ResponseWriter, r *http.Request) {
 	state.mu.Lock()
 	if state.callingClient != nil {
-		state.callingClient.Shutdown()
+		_ = state.callingClient.Shutdown()
 	}
 	state.client = nil
 	state.callingClient = nil
@@ -437,7 +437,7 @@ func handleDeregister(w http.ResponseWriter, r *http.Request) {
 
 	state.mu.Lock()
 	if state.callingClient != nil {
-		state.callingClient.Shutdown()
+		_ = state.callingClient.Shutdown()
 	}
 	state.callingClient = nil
 	state.line = nil
@@ -722,7 +722,7 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Audio WS upgrade failed: %v", err)
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	log.Println("Audio WebSocket connected")
 
 	state.mu.Lock()
@@ -739,7 +739,7 @@ func handleAudioWS(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Audio bridge: failed to create: %v", err)
 		return
 	}
-	defer bridge.Close()
+	defer func() { _ = bridge.Close() }()
 
 	// Register bridge with CallingClient for automatic call↔bridge binding
 	state.mu.RLock()

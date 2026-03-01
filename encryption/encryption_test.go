@@ -634,7 +634,7 @@ func TestParseRSAPublicKeyFromJWK(t *testing.T) {
 		t.Error("RSA modulus does not match")
 	}
 	if pub.E != rsaKey.E {
-		t.Errorf("RSA exponent = %d, want %d", pub.E, rsaKey.PublicKey.E)
+		t.Errorf("RSA exponent = %d, want %d", pub.E, rsaKey.E)
 	}
 }
 
@@ -642,8 +642,8 @@ func TestParseRSAPublicKeyFromString(t *testing.T) {
 	rsaKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	jwk := JWK{
 		Kty: "RSA",
-		N:   base64.RawURLEncoding.EncodeToString(rsaKey.PublicKey.N.Bytes()),
-		E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(rsaKey.PublicKey.E)).Bytes()),
+		N:   base64.RawURLEncoding.EncodeToString(rsaKey.N.Bytes()),
+		E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(rsaKey.E)).Bytes()),
 		Kid: "string-rsa-kid",
 	}
 
@@ -659,7 +659,7 @@ func TestParseRSAPublicKeyFromString(t *testing.T) {
 	if kid != "string-rsa-kid" {
 		t.Errorf("kid = %q, want %q", kid, "string-rsa-kid")
 	}
-	if pub.N.Cmp(rsaKey.PublicKey.N) != 0 {
+	if pub.N.Cmp(rsaKey.N) != 0 {
 		t.Error("RSA modulus does not match")
 	}
 }

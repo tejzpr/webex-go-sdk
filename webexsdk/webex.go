@@ -244,7 +244,7 @@ func (c *Client) RequestWithRetry(ctx context.Context, method, path string, para
 		delay := retryDelay(resp, baseDelay, attempt)
 
 		// Close the response body before retrying
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		// Wait with context cancellation support
 		timer := time.NewTimer(delay)

@@ -108,7 +108,7 @@ func main() {
 
 	// Disconnect
 	fmt.Println("\nDisconnecting from WebSocket...")
-	conversationClient.Disconnect()
+	_ = conversationClient.Disconnect()
 	fmt.Println("Disconnected!")
 }
 
