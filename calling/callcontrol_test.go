@@ -929,6 +929,11 @@ func TestCallingClient(t *testing.T) {
 		cc.lines[line.LineID] = line
 		cc.mu.Unlock()
 
+		// Replicate the forwarding listener that CreateLine() normally sets up
+		line.Emitter.On(string(LineEventIncomingCall), func(data interface{}) {
+			cc.Emitter.Emit(string(LineEventIncomingCall), data)
+		})
+
 		incomingReceived := false
 		cc.Emitter.On(string(LineEventIncomingCall), func(data interface{}) {
 			incomingReceived = true
