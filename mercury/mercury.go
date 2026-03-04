@@ -520,7 +520,14 @@ func (c *Client) listen() {
 	}()
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		c.mu.Lock()
+		conn := c.conn
+		c.mu.Unlock()
+		if conn == nil {
+			return
+		}
+
+		_, message, err := conn.ReadMessage()
 		if err != nil {
 			// Connection closed or error occurred
 			c.handleConnectionError(err)

@@ -233,6 +233,122 @@ func (l *Line) attemptRegistration(mobiusURL string) error {
 	return nil
 }
 
+// MobiusDevice represents a registered device returned by the Mobius API
+type MobiusDevice struct {
+	DeviceID string `json:"deviceId"`
+	URI      string `json:"uri"`
+	Status   string `json:"status,omitempty"`
+}
+
+// ListDevices queries a Mobius server for all registered devices.
+// It attempts a POST to the device endpoint and parses the 403/errorCode 101
+// response which includes the list of existing devices.
+func (l *Line) ListDevices() ([]MobiusDevice, error) {
+	l.mu.RLock()
+	urls := append([]string{}, l.primaryMobiusURLs...)
+	urls = append(urls, l.backupMobiusURLs...)
+	l.mu.RUnlock()
+
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("no Mobius URLs configured")
+	}
+
+	for _, mobiusURL := range urls {
+		devices, err := l.listDevicesFromURL(mobiusURL)
+		if err != nil {
+			log.Printf("ListDevices: failed from %s: %v", mobiusURL, err)
+			continue
+		}
+		return devices, nil
+	}
+	return nil, fmt.Errorf("failed to list devices from any Mobius server")
+}
+
+func (l *Line) listDevicesFromURL(mobiusURL string) ([]MobiusDevice, error) {
+	// A registration POST that hits a 403/101 returns the device list
+	payload := map[string]interface{}{
+		"userId":          l.UserID,
+		"clientDeviceUri": l.clientDeviceURI,
+		"serviceData": map[string]string{
+			"indicator": "calling",
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	url := fmt.Sprintf("%sdevice", mobiusURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+l.core.GetAccessToken())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("spark-user-agent", "webex-calling/beta")
+	req.Header.Set("trackingid", fmt.Sprintf("webex-go-sdk_%s", uuid.New().String()))
+	if l.clientDeviceURI != "" {
+		req.Header.Set("cisco-device-url", l.clientDeviceURI)
+	}
+
+	resp, err := l.core.GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusForbidden {
+		var errResp struct {
+			ErrorCode int            `json:"errorCode"`
+			Devices   []MobiusDevice `json:"devices"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.ErrorCode == 101 {
+			return errResp.Devices, nil
+		}
+	}
+
+	// 200 means no existing devices (registration succeeded as side effect) —
+	// delete the accidental registration immediately and return empty list
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		var deviceInfo MobiusDeviceInfo
+		if json.Unmarshal(body, &deviceInfo) == nil && deviceInfo.Device != nil {
+			log.Printf("ListDevices: accidentally registered device %s — deleting it", deviceInfo.Device.DeviceID)
+			if delErr := l.deleteDevice(mobiusURL, deviceInfo.Device.DeviceID); delErr != nil {
+				log.Printf("ListDevices: failed to clean up accidental registration: %v", delErr)
+			}
+		}
+		return []MobiusDevice{}, nil
+	}
+
+	return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+}
+
+// DeleteAllDevices removes all registered Mobius devices across all known servers.
+func (l *Line) DeleteAllDevices() (int, error) {
+	devices, err := l.ListDevices()
+	if err != nil {
+		return 0, err
+	}
+
+	l.mu.RLock()
+	urls := append([]string{}, l.primaryMobiusURLs...)
+	urls = append(urls, l.backupMobiusURLs...)
+	l.mu.RUnlock()
+
+	deleted := 0
+	for _, dev := range devices {
+		for _, mobiusURL := range urls {
+			if delErr := l.deleteDevice(mobiusURL, dev.DeviceID); delErr == nil {
+				deleted++
+				break
+			}
+		}
+	}
+	return deleted, nil
+}
+
 // deleteDevice deletes an existing Mobius device registration by deviceId.
 // This is used when a 403 errorCode 101 is received (device already registered).
 func (l *Line) deleteDevice(mobiusURL string, deviceID string) error {
