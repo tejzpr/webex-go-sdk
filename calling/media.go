@@ -82,7 +82,9 @@ func NewMediaEngine(config *MediaConfig) (*MediaEngine, error) {
 	// DTLS (it only acts as server when we're active, or client when we're passive).
 	// With ice-lite, we must be the DTLS client (active). Pion defaults to passive
 	// when answering, which causes a DTLS deadlock — nobody initiates the handshake.
-	settings.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
+	if err := settings.SetAnsweringDTLSRole(webrtc.DTLSRoleClient); err != nil {
+		return nil, fmt.Errorf("failed to set DTLS role: %w", err)
+	}
 
 	// Register default interceptors (RTCP reports, NACK, TWCC) — required when
 	// using a custom MediaEngine/SettingEngine, otherwise Pion won't process
@@ -520,12 +522,7 @@ func ModifySdpForMobius(sdp string) string {
 		}
 	}
 
-	inMedia = false
 	for _, line := range lines {
-		if strings.HasPrefix(line, "m=") {
-			inMedia = true
-		}
-
 		// Copy c= line to session level (before first m= line)
 		// Use candidate IP if the c= line has 0.0.0.0
 		if strings.HasPrefix(line, "m=") && !hasSessionCline {
