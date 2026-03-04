@@ -925,9 +925,9 @@ func (cc *CallingClient) handleIncomingCall(event *MobiusCallEvent) {
 	// Process the initial ROAP message if present
 	call.HandleMobiusEvent(event)
 
-	// Emit incoming call event
+	// Emit incoming call event on the line — the line-level listener in
+	// CreateLine() forwards to cc.Emitter, so we only emit once here.
 	targetLine.Emitter.Emit(string(LineEventIncomingCall), call)
-	cc.Emitter.Emit(string(LineEventIncomingCall), call)
 }
 
 // Shutdown deregisters all lines, disconnects Mercury, and cleans up resources
