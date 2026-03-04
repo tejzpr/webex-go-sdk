@@ -620,6 +620,25 @@ func (cc *CallingClient) CreateLine() (*Line, error) {
 	return line, nil
 }
 
+// CreateLineForCleanup creates a Line with Mobius URLs populated but does NOT
+// register it. This is useful when you need to list/delete stale devices but
+// can't register due to 503 errors.
+func (cc *CallingClient) CreateLineForCleanup() *Line {
+	cc.mu.RLock()
+	primary := cc.primaryMobiusURLs
+	backup := cc.backupMobiusURLs
+	deviceURI := cc.clientDeviceURI
+	userID := cc.userID
+	cc.mu.RUnlock()
+
+	return NewLine(cc.core, cc.config, &LineConfig{
+		PrimaryMobiusURLs: primary,
+		BackupMobiusURLs:  backup,
+		ClientDeviceURI:   deviceURI,
+		UserID:            userID,
+	})
+}
+
 // GetLines returns all registered lines
 func (cc *CallingClient) GetLines() map[string]*Line {
 	cc.mu.RLock()

@@ -322,6 +322,28 @@ func (l *Line) listDevicesFromURL(mobiusURL string) ([]MobiusDevice, error) {
 		return []MobiusDevice{}, nil
 	}
 
+	// 503 means stale registrations blocking new ones — try to parse device info
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		log.Printf("ListDevices: got 503 (stale registrations), response: %s", string(body))
+		var errResp struct {
+			Devices []MobiusDevice `json:"devices"`
+		}
+		if json.Unmarshal(body, &errResp) == nil {
+			var validDevices []MobiusDevice
+			for _, d := range errResp.Devices {
+				if d.DeviceID != "" {
+					validDevices = append(validDevices, d)
+				}
+			}
+			if len(validDevices) > 0 {
+				return validDevices, nil
+			}
+		}
+		// Mobius returned 503 with null devices — no IDs to delete.
+		// Stale registrations will auto-expire in ~3-5 minutes.
+		return nil, fmt.Errorf("503: stale registrations exist but Mobius returned no device IDs; wait a few minutes for auto-expiry")
+	}
+
 	return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 }
 
@@ -396,10 +418,6 @@ func (l *Line) onRegistered() {
 // Deregister deregisters this line from the Mobius server
 func (l *Line) Deregister() error {
 	l.mu.RLock()
-	if l.status != RegistrationStatusActive {
-		l.mu.RUnlock()
-		return nil
-	}
 	mobiusURL := l.activeMobiusURL
 	deviceID := l.MobiusDeviceID
 	l.mu.RUnlock()
