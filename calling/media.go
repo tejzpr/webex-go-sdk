@@ -61,27 +61,28 @@ func NewMediaEngine(config *MediaConfig) (*MediaEngine, error) {
 		config = DefaultMediaConfig()
 	}
 
-	// Register only PCMU and PCMA — BroadWorks/Mobius consistently selects PCMU.
-	// Avoid RegisterDefaultCodecs which adds Opus/G722/video codecs that
-	// BroadWorks doesn't support and can cause negotiation issues.
+	// Register audio codecs for BroadWorks/Mobius compatibility.
 	m := &webrtc.MediaEngine{}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU, ClockRate: 8000},
-		PayloadType:        0,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		return nil, fmt.Errorf("failed to register PCMU: %w", err)
-	}
-	if err := m.RegisterCodec(webrtc.RTPCodecParameters{
-		RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA, ClockRate: 8000},
-		PayloadType:        8,
-	}, webrtc.RTPCodecTypeAudio); err != nil {
-		return nil, fmt.Errorf("failed to register PCMA: %w", err)
+	for _, codec := range []webrtc.RTPCodecParameters{
+		{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMU, ClockRate: 8000}, PayloadType: 0},
+		{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypePCMA, ClockRate: 8000}, PayloadType: 8},
+		{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/telephone-event", ClockRate: 8000, SDPFmtpLine: "0-15"}, PayloadType: 101},
+		{RTPCodecCapability: webrtc.RTPCodecCapability{MimeType: "audio/CN", ClockRate: 8000}, PayloadType: 19},
+	} {
+		if err := m.RegisterCodec(codec, webrtc.RTPCodecTypeAudio); err != nil {
+			return nil, fmt.Errorf("failed to register codec %s: %w", codec.MimeType, err)
+		}
 	}
 
 	// BroadWorks (ice-lite) sends RTP before Pion finishes processing the SDP answer.
 	// Enable undeclared SSRC handling so OnTrack fires for early media.
 	settings := webrtc.SettingEngine{}
 	settings.SetHandleUndeclaredSSRCWithoutAnswer(true)
+	// BroadWorks is ice-lite and offers a=setup:actpass. It will NOT initiate
+	// DTLS (it only acts as server when we're active, or client when we're passive).
+	// With ice-lite, we must be the DTLS client (active). Pion defaults to passive
+	// when answering, which causes a DTLS deadlock — nobody initiates the handshake.
+	settings.SetAnsweringDTLSRole(webrtc.DTLSRoleClient)
 
 	// Register default interceptors (RTCP reports, NACK, TWCC) — required when
 	// using a custom MediaEngine/SettingEngine, otherwise Pion won't process
@@ -158,11 +159,19 @@ func NewMediaEngine(config *MediaConfig) (*MediaEngine, error) {
 	return engine, nil
 }
 
-// OnRemoteTrack sets the callback for when a remote audio track is received
+// OnRemoteTrack sets the callback for when a remote audio track is received.
+// If a track was already received before the handler was set, the handler is
+// called immediately with that track.
 func (me *MediaEngine) OnRemoteTrack(handler func(track *webrtc.TrackRemote)) {
 	me.mu.Lock()
-	defer me.mu.Unlock()
 	me.onRemoteTrack = handler
+	existingTrack := me.remoteTrack
+	me.mu.Unlock()
+
+	if existingTrack != nil && handler != nil {
+		log.Printf("OnRemoteTrack: track already available, calling handler immediately")
+		handler(existingTrack)
+	}
 }
 
 // OnICECandidate sets the callback for when an ICE candidate is gathered
@@ -278,7 +287,6 @@ func (me *MediaEngine) CreateAnswer() (string, error) {
 	if localDesc == nil {
 		return "", fmt.Errorf("local description is nil after gathering")
 	}
-
 	return localDesc.SDP, nil
 }
 
@@ -287,9 +295,10 @@ func (me *MediaEngine) SetRemoteOffer(sdp string) error {
 	me.mu.Lock()
 	defer me.mu.Unlock()
 
+	fixed := fixIncomingSdp(sdp)
 	return me.peerConnection.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
-		SDP:  fixIncomingSdp(sdp),
+		SDP:  fixed,
 	})
 }
 
@@ -409,11 +418,16 @@ func NewRoapOK(seq int) *RoapMessage {
 // fixIncomingSdp patches incoming BroadWorks SDP for Pion v4 compatibility:
 // - Injects a=mid:0 after the first m= line if missing (Pion v4 requires mid)
 // - Adds a=group:BUNDLE 0 at session level if missing
+// - Normalises line endings to \r\n (SDP spec)
 func fixIncomingSdp(sdp string) string {
-	lines := strings.Split(sdp, "\r\n")
-	result := make([]string, 0, len(lines)+2)
+	// Normalize line endings: BroadWorks may send \n only
+	sdp = strings.ReplaceAll(sdp, "\r\n", "\n")
+	lines := strings.Split(sdp, "\n")
+
+	result := make([]string, 0, len(lines)+4)
 	hasMid := false
 	hasBundle := false
+	hasDirection := false
 	inMedia := false
 
 	// First pass: check what's present
@@ -423,6 +437,10 @@ func fixIncomingSdp(sdp string) string {
 		}
 		if strings.HasPrefix(line, "a=group:BUNDLE") {
 			hasBundle = true
+		}
+		if strings.HasPrefix(line, "a=sendrecv") || strings.HasPrefix(line, "a=sendonly") ||
+			strings.HasPrefix(line, "a=recvonly") || strings.HasPrefix(line, "a=inactive") {
+			hasDirection = true
 		}
 	}
 
@@ -435,9 +453,14 @@ func fixIncomingSdp(sdp string) string {
 			}
 			inMedia = true
 			result = append(result, line)
-			// After m= line, inject mid if missing
+			// After m= line, inject mid and direction if missing
 			if !hasMid {
 				result = append(result, "a=mid:0")
+			}
+			// Pion v4 requires an explicit direction attribute; BroadWorks omits it
+			// (SDP spec says default is sendrecv, but Pion doesn't apply the default)
+			if !hasDirection {
+				result = append(result, "a=sendrecv")
 			}
 			continue
 		}
@@ -447,16 +470,84 @@ func fixIncomingSdp(sdp string) string {
 	return strings.Join(result, "\r\n")
 }
 
-// ModifySdpForMobius cleans up the SDP offer for BroadWorks/Mobius compatibility:
+// ModifySdpForMobius cleans up the SDP offer/answer for BroadWorks/Mobius compatibility:
 // - Removes IPv6 candidates (BroadWorks only supports IPv4)
-// - Converts port 9 to 0 in m= line (JS SDK: convertPort9to0)
 // - Removes rtcp-fb lines (BroadWorks doesn't support transport-cc)
 // - Removes extmap lines (BroadWorks doesn't support RTP header extensions)
 // - Removes extmap-allow-mixed
+// - Copies c= line from media level to session level (copyClineToSessionLevel)
 func ModifySdpForMobius(sdp string) string {
 	lines := strings.Split(sdp, "\r\n")
 	filtered := make([]string, 0, len(lines))
+
+	// First pass: collect info we need
+	// - Find first IPv4 srflx candidate (preferred) or host candidate for c= line
+	// - Find media-level c= line for copyClineToSessionLevel
+	var bestCandidateIP, bestCandidatePort string
+	var mediaCline string
+	hasSessionCline := false
+	inMedia := false
 	for _, line := range lines {
+		if strings.HasPrefix(line, "m=") {
+			inMedia = true
+		}
+		if strings.HasPrefix(line, "c=") {
+			if inMedia {
+				mediaCline = line
+			} else {
+				hasSessionCline = true
+			}
+		}
+		if strings.HasPrefix(line, "a=candidate:") {
+			parts := strings.Fields(line)
+			if len(parts) >= 8 {
+				addr := parts[4]
+				port := parts[5]
+				// Skip IPv6
+				if strings.Contains(addr, ":") {
+					continue
+				}
+				candidateType := ""
+				if len(parts) >= 8 {
+					candidateType = parts[7] // "host" or "srflx"
+				}
+				// Prefer srflx (public IP), fall back to host
+				if candidateType == "srflx" || bestCandidateIP == "" {
+					bestCandidateIP = addr
+					bestCandidatePort = port
+				}
+			}
+		}
+	}
+
+	inMedia = false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "m=") {
+			inMedia = true
+		}
+
+		// Copy c= line to session level (before first m= line)
+		// Use candidate IP if the c= line has 0.0.0.0
+		if strings.HasPrefix(line, "m=") && !hasSessionCline {
+			if bestCandidateIP != "" {
+				filtered = append(filtered, fmt.Sprintf("c=IN IP4 %s", bestCandidateIP))
+			} else if mediaCline != "" {
+				filtered = append(filtered, mediaCline)
+			}
+			hasSessionCline = true
+		}
+
+		// Replace c=IN IP4 0.0.0.0 with real candidate IP
+		if strings.HasPrefix(line, "c=") && strings.Contains(line, "0.0.0.0") && bestCandidateIP != "" {
+			filtered = append(filtered, fmt.Sprintf("c=IN IP4 %s", bestCandidateIP))
+			continue
+		}
+
+		// Replace port 9 in m= line with real candidate port
+		if strings.HasPrefix(line, "m=audio 9 ") && bestCandidatePort != "" {
+			line = strings.Replace(line, "m=audio 9 ", "m=audio "+bestCandidatePort+" ", 1)
+		}
+
 		// Skip IPv6 candidates (address contains ":")
 		if strings.HasPrefix(line, "a=candidate:") {
 			parts := strings.Fields(line)
@@ -479,8 +570,16 @@ func ModifySdpForMobius(sdp string) string {
 		if strings.HasPrefix(line, "a=extmap-allow-mixed") {
 			continue
 		}
-		// Note: port 9 in SDP is a placeholder (Pion default). Do NOT convert to 0
-		// as port 0 means "reject this media stream" in SDP.
+		// Skip rtcp-rsize (not supported by BroadWorks)
+		if strings.HasPrefix(line, "a=rtcp-rsize") {
+			continue
+		}
+		// BroadWorks ice-lite + actpass offer: we must be DTLS client (active).
+		// Pion defaults to passive when answering, but ice-lite won't initiate DTLS.
+		if line == "a=setup:passive" {
+			filtered = append(filtered, "a=setup:active")
+			continue
+		}
 		filtered = append(filtered, line)
 	}
 	return strings.Join(filtered, "\r\n")

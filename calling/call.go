@@ -528,11 +528,27 @@ func (c *Call) HandleMobiusEvent(event *MobiusCallEvent) {
 		c.Emitter.Emit(string(CallEventDisconnect), c.callID)
 
 	case MobiusEventCallSetup:
-		// Incoming call setup
+		// Skip redundant setup events if the call is already connected.
+		// BroadWorks can re-send mobius.call after the call is established.
+		c.mu.RLock()
+		alreadyConnected := c.connected
+		c.mu.RUnlock()
+		if alreadyConnected {
+			log.Printf("[INCOMING] Ignoring redundant call setup for already-connected callId=%s", c.callID)
+			return
+		}
+
+		// Incoming call setup — send sig_alerting to Mobius immediately
 		c.mu.Lock()
 		c.callID = data.CallID
 		c.state = CallStateAlerting
 		c.mu.Unlock()
+
+		log.Printf("[INCOMING] Call setup received, PATCHing sig_alerting for callId=%s", c.callID)
+		if err := c.patchCallState("sig_alerting"); err != nil {
+			log.Printf("[INCOMING] Failed to PATCH sig_alerting: %v", err)
+		}
+
 		c.Emitter.Emit(string(CallEventAlerting), c.callID)
 	}
 
@@ -575,19 +591,74 @@ func (c *Call) handleRoapMessage(msg *RoapMessage) {
 		}
 
 	case RoapMessageOffer:
-		// Remote sent a new offer (renegotiation)
+		log.Printf("[INCOMING] ROAP OFFER received (seq=%d, sdp length=%d) for callId=%s direction=%s", msg.Seq, len(msg.SDP), c.callID, c.direction)
+
+		// For incoming calls that haven't been connected yet, we must:
+		// 1. Add audio track
+		// 2. PATCH call state to "connected" on Mobius (accept the call)
+		// 3. Then send the ROAP answer with media
+		// This matches the JS SDK's answer() flow.
+		isInitialInbound := c.direction == CallDirectionInbound && !c.connected
+
+		// Ensure audio track exists before setting the remote offer
+		if c.media.GetLocalTrack() == nil {
+			log.Printf("[INCOMING] Adding audio track")
+			if _, err := c.media.AddAudioTrack(); err != nil {
+				log.Printf("Failed to add audio track for incoming offer: %v", err)
+				return
+			}
+			log.Printf("[INCOMING] Audio track added successfully")
+		}
+
+		// Register remote track handler BEFORE SetRemoteOffer — OnTrack can
+		// fire as soon as DTLS completes, which may happen before we finish
+		// sending the ROAP answer.
+		if isInitialInbound {
+			c.media.OnRemoteTrack(func(track *webrtc.TrackRemote) {
+				c.Emitter.Emit(string(CallEventRemoteMedia), track)
+			})
+		}
+
+		// PATCH sig_connected BEFORE sending ROAP answer — Mobius rejects media
+		// when the call state is still ALERT/PROGRESS (error 400).
+		if isInitialInbound {
+			log.Printf("[INCOMING] PATCHing call to connected state")
+			if err := c.patchCallState("sig_connected"); err != nil {
+				log.Printf("[INCOMING] Failed to PATCH call state to connected: %v", err)
+			}
+		}
+
 		if err := c.media.SetRemoteOffer(msg.SDP); err != nil {
 			log.Printf("Failed to set remote offer: %v", err)
 			return
 		}
+
 		sdp, err := c.media.CreateAnswer()
 		if err != nil {
 			log.Printf("Failed to create answer: %v", err)
 			return
 		}
+
+		sdp = ModifySdpForMobius(sdp)
+
 		answerMsg := SDPToRoapAnswer(sdp, msg.Seq)
+		log.Printf("[INCOMING] Sending ROAP answer with seq=%d to callId=%s", msg.Seq, c.callID)
 		if err := c.postMedia(answerMsg); err != nil {
 			log.Printf("Failed to send ROAP answer: %v", err)
+			return
+		}
+		log.Printf("[INCOMING] ROAP answer sent successfully")
+
+		// Transition local state for initial inbound calls
+		if isInitialInbound {
+			c.mu.Lock()
+			c.state = CallStateConnected
+			c.connected = true
+			c.seq++
+			c.mu.Unlock()
+
+			c.Emitter.Emit(string(CallEventConnect), c.callID)
+			c.Emitter.Emit(string(CallEventEstablished), c.callID)
 		}
 
 	case RoapMessageOK:
@@ -742,9 +813,51 @@ func (c *Call) postToMobius(url string, payload interface{}) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+// patchCallState sends a PATCH to Mobius to transition the call state.
+// This is required for incoming calls: Mobius must be told the call is "connected"
+// before media answers can be sent (mirrors the JS SDK's answer flow).
+func (c *Call) patchCallState(state string) error {
+	payload := map[string]interface{}{
+		"device": map[string]string{
+			"deviceId":      c.deviceID,
+			"correlationId": c.correlationID,
+		},
+		"callId":      c.callID,
+		"callState":   state,
+		"inbandMedia": false,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("error marshaling PATCH payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%sdevices/%s/calls/%s", c.mobiusURL, c.deviceID, c.callID)
+	log.Printf("PATCH callState=%s for callId=%s", state, c.callID)
+
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("error creating PATCH request: %w", err)
+	}
+
+	c.setMobiusHeaders(req)
+
+	resp, err := c.core.GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("error making PATCH request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("PATCH failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return nil
