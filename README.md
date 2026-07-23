@@ -173,7 +173,7 @@ for {
     for _, room := range page.Items {
         fmt.Println(room.Title)
     }
-    if !page.HasNext() {
+    if !page.HasNext {
         break
     }
     page, err = page.Next()
