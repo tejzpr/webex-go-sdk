@@ -8,6 +8,7 @@ package people
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -156,6 +157,54 @@ func TestList(t *testing.T) {
 	}
 	if person.DisplayName != "Test User" {
 		t.Errorf("Expected display name 'Test User', got '%s'", person.DisplayName)
+	}
+}
+
+func TestPeoplePageNextAndPrev(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("page") == "2" {
+			w.Header().Set("Link", fmt.Sprintf("<%s/people?page=1>; rel=\"prev\"", server.URL))
+			_, _ = w.Write([]byte(`{"items":[{"id":"person-2","displayName":"Second Person","emails":["second@example.com"]}]}`))
+			return
+		}
+
+		w.Header().Set("Link", fmt.Sprintf("<%s/people?page=2>; rel=\"next\"", server.URL))
+		_, _ = w.Write([]byte(`{"items":[{"id":"person-1","displayName":"First Person","emails":["first@example.com"]}]}`))
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	client, err := webexsdk.NewClient("test-token", &webexsdk.Config{
+		BaseURL:    server.URL,
+		Timeout:    5 * time.Second,
+		HttpClient: server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	client.BaseURL = baseURL
+
+	page, err := New(client, nil).List(&ListOptions{})
+	if err != nil {
+		t.Fatalf("List returned an error: %v", err)
+	}
+
+	nextPage, err := page.Next()
+	if err != nil {
+		t.Fatalf("Next returned an error: %v", err)
+	}
+	if len(nextPage.Items) != 1 || nextPage.Items[0].ID != "person-2" {
+		t.Fatalf("Next returned unexpected people: %+v", nextPage.Items)
+	}
+
+	previousPage, err := nextPage.Prev()
+	if err != nil {
+		t.Fatalf("Prev returned an error: %v", err)
+	}
+	if len(previousPage.Items) != 1 || previousPage.Items[0].ID != "person-1" {
+		t.Fatalf("Prev returned unexpected people: %+v", previousPage.Items)
 	}
 }
 
