@@ -13,6 +13,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -398,34 +399,20 @@ func (cc *CallingClient) registerWDMDevice() ([]string, error) {
 		}
 	}
 
-	// Also check v2 services for serviceName=mobius (may be array or object)
-	if len(wdmResp.Services) > 0 {
-		var v2Services []struct {
-			ServiceName string `json:"serviceName"`
-			ServiceURLs []struct {
-				BaseURL  string `json:"baseUrl"`
-				Priority int    `json:"priority"`
-			} `json:"serviceUrls"`
+	// Some WDM versions include Services v2 directly in the device response.
+	mobiusHosts = append(mobiusHosts, extractMobiusHosts(wdmResp.Services, seen)...)
+
+	// Current Services v2 catalogs are fetched separately from U2C.
+	if len(mobiusHosts) == 0 {
+		u2cURL := serviceLink(wdmResp.ServiceHostMap.ServiceLinks, "u2c")
+		if u2cURL == "" {
+			u2cURL = cc.config.U2CURL
 		}
-		if json.Unmarshal(wdmResp.Services, &v2Services) == nil {
-			for _, svc := range v2Services {
-				if svc.ServiceName == "mobius" {
-					for _, su := range svc.ServiceURLs {
-						if su.BaseURL != "" {
-							host := su.BaseURL
-							host = strings.TrimPrefix(host, "https://")
-							host = strings.TrimPrefix(host, "http://")
-							if idx := strings.Index(host, "/"); idx > 0 {
-								host = host[:idx]
-							}
-							if host != "" && !seen[host] {
-								seen[host] = true
-								mobiusHosts = append(mobiusHosts, host)
-							}
-						}
-					}
-				}
-			}
+		u2cHosts, catalogErr := cc.fetchMobiusHostsFromU2C(u2cURL, seen)
+		if catalogErr != nil {
+			log.Printf("U2C Mobius catalog discovery failed: %v", catalogErr)
+		} else {
+			mobiusHosts = append(mobiusHosts, u2cHosts...)
 		}
 	}
 
@@ -444,12 +431,121 @@ func (cc *CallingClient) registerWDMDevice() ([]string, error) {
 	}
 
 	if len(mobiusHosts) > 0 {
-		log.Printf("Found %d Mobius hosts from WDM: %v", len(mobiusHosts), mobiusHosts)
+		log.Printf("Found %d Mobius hosts from service discovery: %v", len(mobiusHosts), mobiusHosts)
 	} else {
-		log.Printf("No Mobius hosts found in WDM response, will use defaults")
+		log.Printf("No Mobius hosts found through WDM or U2C, will use defaults")
 	}
 
 	return mobiusHosts, nil
+}
+
+func (cc *CallingClient) fetchMobiusHostsFromU2C(baseURL string, seen map[string]bool) ([]string, error) {
+	if baseURL == "" {
+		return nil, fmt.Errorf("U2C service URL is not configured")
+	}
+
+	catalogURL := strings.TrimRight(baseURL, "/") + "/catalog"
+	req, err := http.NewRequest(http.MethodGet, catalogURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create U2C catalog request: %w", err)
+	}
+	query := req.URL.Query()
+	query.Set("format", "U2CV2")
+	req.URL.RawQuery = query.Encode()
+	req.Header.Set("Authorization", "Bearer "+cc.core.GetAccessToken())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("spark-user-agent", "webex-calling/go-sdk (web)")
+
+	resp, err := cc.core.GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request U2C catalog: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read U2C catalog: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("U2C catalog returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var catalog struct {
+		Services json.RawMessage `json:"services"`
+	}
+	if err := json.Unmarshal(body, &catalog); err != nil {
+		return nil, fmt.Errorf("parse U2C catalog: %w", err)
+	}
+	hosts := extractMobiusHosts(catalog.Services, seen)
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("U2C catalog contained no Mobius services")
+	}
+	return hosts, nil
+}
+
+func serviceLink(links map[string]string, name string) string {
+	for key, value := range links {
+		if strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+type wdmService struct {
+	ServiceName string `json:"serviceName"`
+	ServiceURLs []struct {
+		BaseURL string `json:"baseUrl"`
+	} `json:"serviceUrls"`
+}
+
+// extractMobiusHosts supports both WDM Services v2 response shapes.
+func extractMobiusHosts(raw json.RawMessage, seen map[string]bool) []string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	var services []wdmService
+	if err := json.Unmarshal(raw, &services); err != nil {
+		var keyedServices map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &keyedServices); err != nil {
+			return nil
+		}
+		for key, serviceRaw := range keyedServices {
+			var service wdmService
+			if err := json.Unmarshal(serviceRaw, &service); err != nil {
+				continue
+			}
+			if service.ServiceName == "" {
+				service.ServiceName = key
+			}
+			services = append(services, service)
+		}
+	}
+
+	var hosts []string
+	for _, service := range services {
+		if !strings.EqualFold(service.ServiceName, "mobius") {
+			continue
+		}
+		for _, serviceURL := range service.ServiceURLs {
+			host := serviceHost(serviceURL.BaseURL)
+			if host == "" || seen[host] {
+				continue
+			}
+			seen[host] = true
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
+}
+
+func serviceHost(baseURL string) string {
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil || parsedURL.Hostname() == "" {
+		return ""
+	}
+	return parsedURL.Hostname()
 }
 
 // contains checks if s contains substr (case-insensitive)
