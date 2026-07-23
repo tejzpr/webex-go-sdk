@@ -456,6 +456,10 @@ type Config struct {
 	// RegionDiscoveryURL is the URL for the Webex region discovery service.
 	// Default: https://ds.ciscospark.com/v1/region
 	RegionDiscoveryURL string
+
+	// U2CURL is the base URL for the Webex Services v2 catalog used for Mobius discovery.
+	// Default: https://u2c-a.wbx2.com/u2c/api/v1
+	U2CURL string
 }
 
 // DefaultConfig returns a Config with sensible defaults
@@ -465,6 +469,7 @@ func DefaultConfig() *Config {
 		RequestTimeout:     30 * time.Second,
 		WDMURL:             "https://wdm-a.wbx2.com/wdm/api/v1/devices",
 		RegionDiscoveryURL: "https://ds.ciscospark.com/v1/region",
+		U2CURL:             "https://u2c-a.wbx2.com/u2c/api/v1",
 	}
 }
 
