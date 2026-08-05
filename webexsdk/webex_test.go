@@ -123,6 +123,49 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+func TestNewClientUsesBoundedPooledDefaultTransport(t *testing.T) {
+	client, err := NewClient("valid-token", nil)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	transport, ok := client.GetHTTPClient().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("default transport type = %T, want *http.Transport", client.GetHTTPClient().Transport)
+	}
+
+	if transport == http.DefaultTransport {
+		t.Fatal("default transport must be cloned before SDK-specific limits are applied")
+	}
+	if transport.MaxIdleConns != defaultMaxIdleConns {
+		t.Errorf("MaxIdleConns = %d, want %d", transport.MaxIdleConns, defaultMaxIdleConns)
+	}
+	if transport.MaxIdleConnsPerHost != defaultMaxIdleConnsPerHost {
+		t.Errorf("MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, defaultMaxIdleConnsPerHost)
+	}
+	if transport.MaxConnsPerHost != defaultMaxConnsPerHost {
+		t.Errorf("MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, defaultMaxConnsPerHost)
+	}
+}
+
+func TestNewClientPreservesCustomHTTPClient(t *testing.T) {
+	customClient := &http.Client{
+		Transport: http.DefaultTransport,
+		Timeout:   45 * time.Second,
+	}
+	config := DefaultConfig()
+	config.HttpClient = customClient
+
+	client, err := NewClient("valid-token", config)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	if client.GetHTTPClient() != customClient {
+		t.Fatal("NewClient() replaced the caller-provided HTTP client")
+	}
+}
+
 func TestRegisterAndGetPlugin(t *testing.T) {
 	client, _ := NewClient("test-token", nil)
 

@@ -20,6 +20,14 @@ import (
 	"time"
 )
 
+const (
+	// These limits keep enough reusable connections for concurrent Webex API
+	// traffic while still placing a finite upper bound on connections per host.
+	defaultMaxIdleConns        = 100
+	defaultMaxIdleConnsPerHost = 64
+	defaultMaxConnsPerHost     = 64
+)
+
 // Logger is the interface for SDK logging. Any logger that implements Printf
 // (such as the standard library's *log.Logger) can be used.
 type Logger interface {
@@ -149,12 +157,10 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 		return nil, err
 	}
 
-	// Create HTTP client - either use the provided custom client or create a default one
+	// Create HTTP client - either use the provided custom client or create a pooled default one.
 	httpClient := config.HttpClient
 	if httpClient == nil {
-		httpClient = &http.Client{
-			Timeout: config.Timeout,
-		}
+		httpClient = newDefaultHTTPClient(config.Timeout)
 	}
 
 	// Set up logger - use provided logger or default
@@ -173,6 +179,20 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 	}
 
 	return client, nil
+}
+
+// newDefaultHTTPClient clones Go's default transport so the SDK retains its
+// proxy, dial, TLS, and HTTP/2 behavior while supporting concurrent API calls.
+func newDefaultHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = defaultMaxIdleConns
+	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
+	transport.MaxConnsPerHost = defaultMaxConnsPerHost
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
 }
 
 // RegisterPlugin registers a plugin with the client
