@@ -65,7 +65,7 @@ func main() {
 
 ### REST APIs (Fully Implemented)
 
-- **People** - Manage users in your organization
+- **People** - Manage users
 - **Messages** - Send and receive messages in rooms
 - **Rooms** - Create and manage Webex rooms
 - **Teams** - Create and manage Webex teams
