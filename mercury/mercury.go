@@ -8,6 +8,7 @@ package mercury
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -88,12 +89,11 @@ type Client struct {
 	hasConnected       bool
 	reconnecting       atomic.Bool // Guards against concurrent reconnection attempts
 	mu                 sync.Mutex
+	writeMu            sync.Mutex // Serializes WebSocket writes across ping and shutdown.
 	eventHandlers      map[string][]EventHandler
 	closeCh            chan struct{}
 	done               chan struct{}
 	timeOffset         int64
-	retryCount         int
-	currentBackoff     time.Duration
 	deviceProvider     DeviceProvider
 	customWebSocketURL string
 }
@@ -105,12 +105,11 @@ func New(webexClient *webexsdk.Client, config *Config) *Client {
 	}
 
 	return &Client{
-		webexClient:    webexClient,
-		config:         config,
-		eventHandlers:  make(map[string][]EventHandler),
-		closeCh:        make(chan struct{}),
-		done:           make(chan struct{}),
-		currentBackoff: config.BackoffTimeReset,
+		webexClient:   webexClient,
+		config:        config,
+		eventHandlers: make(map[string][]EventHandler),
+		closeCh:       make(chan struct{}),
+		done:          make(chan struct{}),
 	}
 }
 
@@ -144,47 +143,58 @@ func (c *Client) Connect() error {
 	c.connecting = true
 	deviceProvider := c.deviceProvider
 	customURL := c.customWebSocketURL
+	// The attempt belongs to the current generation. Disconnect closes this
+	// channel, which cancels the attempt even while it is dialing.
+	closeCh := c.closeCh
 	c.mu.Unlock()
 
 	// If we have a custom URL, use it directly
 	if customURL != "" {
-		return c.connectWithBackoff(customURL)
+		return c.connectWithBackoff(customURL, closeCh)
 	}
 
 	// Try to get the websocket URL from the device provider
 	if deviceProvider == nil {
-		c.mu.Lock()
-		c.connecting = false
-		c.mu.Unlock()
+		c.finishConnecting(closeCh)
 		return fmt.Errorf("no device provider or custom URL available")
 	}
 
 	// Register the device and get WebSocket URL
 	if err := deviceProvider.Register(); err != nil {
-		c.mu.Lock()
-		c.connecting = false
-		c.mu.Unlock()
+		c.finishConnecting(closeCh)
 		return fmt.Errorf("failed to register device: %v", err)
 	}
 
 	wsURL, err := deviceProvider.GetWebSocketURL()
 	if err != nil || wsURL == "" {
-		c.mu.Lock()
-		c.connecting = false
-		c.mu.Unlock()
+		c.finishConnecting(closeCh)
 		if err != nil {
 			return fmt.Errorf("failed to get WebSocket URL from device: %v", err)
 		}
 		return fmt.Errorf("device provider returned empty WebSocket URL")
 	}
 
-	return c.connectWithBackoff(wsURL)
+	return c.connectWithBackoff(wsURL, closeCh)
+}
+
+// finishConnecting clears the connecting flag after a failed attempt, but only
+// if the attempt still belongs to the current generation. After Disconnect (and
+// possibly a new Connect), the flag belongs to someone else.
+func (c *Client) finishConnecting(closeCh chan struct{}) {
+	c.mu.Lock()
+	if c.closeCh == closeCh {
+		c.connecting = false
+	}
+	c.mu.Unlock()
 }
 
 // Disconnect closes the websocket connection
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
-	if !c.connected && !c.connecting {
+	// A connection that just failed has connected == false but is still
+	// installed while its reconnect is being scheduled. Treat it as live so
+	// Disconnect cancels that reconnect instead of returning early.
+	if !c.connected && !c.connecting && c.conn == nil {
 		c.mu.Unlock()
 		return nil
 	}
@@ -204,7 +214,7 @@ func (c *Client) Disconnect() error {
 
 	if conn != nil {
 		// Send close message and close the connection
-		_ = conn.WriteMessage(websocket.CloseMessage,
+		_ = c.writeMessage(conn, websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by client"))
 		_ = conn.Close()
 	}
@@ -298,51 +308,71 @@ func (c *Client) EventHandlers() map[string][]EventHandler {
 }
 
 // connectWithBackoff attempts to connect to the Mercury service with exponential backoff
-func (c *Client) connectWithBackoff(wsURL string) error {
-	// Reset retry count on new connection attempt
-	c.retryCount = 0
-	c.currentBackoff = c.config.BackoffTimeReset
+//
+// closeCh is the generation the attempt belongs to. Once it is closed (by
+// Disconnect), the loop stops and no connection is installed.
+func (c *Client) connectWithBackoff(wsURL string, closeCh chan struct{}) error {
+	// Retry state is local so that an old loop still winding down after
+	// Disconnect cannot interfere with a newer one.
+	retryCount := 0
+	backoff := c.config.BackoffTimeReset
+
+	c.mu.Lock()
+	hasConnected := c.hasConnected
+	c.mu.Unlock()
 
 	maxRetries := c.config.MaxRetries
-	if !c.hasConnected {
+	if !hasConnected {
 		maxRetries = c.config.InitialConnectionMaxRetries
 	}
 
 	var err error
-	for c.retryCount <= maxRetries {
-		err = c.attemptConnection(wsURL)
+	for retryCount <= maxRetries {
+		err = c.attemptConnection(wsURL, closeCh)
 		if err == nil {
 			return nil // Connection successful
 		}
+		if errors.Is(err, errConnectionCancelled) {
+			return nil // Stopped by user
+		}
 
 		// Increment retry count
-		c.retryCount++
-		if c.retryCount > maxRetries {
+		retryCount++
+		if retryCount > maxRetries {
 			break // Exceeded max retries
 		}
 
 		// Wait for backoff time or until connection is closed
 		select {
-		case <-time.After(c.currentBackoff):
+		case <-time.After(backoff):
 			// Double the backoff time, up to max
-			c.currentBackoff *= 2
-			if c.currentBackoff > c.config.BackoffTimeMax {
-				c.currentBackoff = c.config.BackoffTimeMax
+			backoff *= 2
+			if backoff > c.config.BackoffTimeMax {
+				backoff = c.config.BackoffTimeMax
 			}
-		case <-c.closeCh:
+		case <-closeCh:
 			return nil // Stopped by user
 		}
 	}
 
 	// Couldn't connect after all retries
-	c.mu.Lock()
-	c.connecting = false
-	c.mu.Unlock()
-	return fmt.Errorf("failed to connect after %d attempts: %v", c.retryCount, err)
+	c.finishConnecting(closeCh)
+	return fmt.Errorf("failed to connect after %d attempts: %v", retryCount, err)
 }
 
-// attemptConnection makes a single connection attempt to the Mercury service
-func (c *Client) attemptConnection(wsURL string) error {
+// errConnectionCancelled means Disconnect ran while an attempt was in flight.
+var errConnectionCancelled = errors.New("mercury: connection attempt cancelled by Disconnect")
+
+// attemptConnection makes a single connection attempt to the Mercury service.
+// It installs the new connection only if closeCh is still the current,
+// unclosed generation.
+func (c *Client) attemptConnection(wsURL string, closeCh chan struct{}) error {
+	select {
+	case <-closeCh:
+		return errConnectionCancelled
+	default:
+	}
+
 	// Get auth token and prepare URL
 	token := c.webexClient.GetAccessToken()
 	parsedURL, err := c.prepareWebSocketURL(wsURL)
@@ -356,9 +386,11 @@ func (c *Client) attemptConnection(wsURL string) error {
 		return err
 	}
 
-	// Set up pong handler
+	// Set up a connection-specific pong handler. Reconnect replaces the
+	// client's current connection, so the old handler must not reset deadlines
+	// on a newer socket.
 	conn.SetPongHandler(func(data string) error {
-		return c.handlePong(data)
+		return c.handlePong(conn, data)
 	})
 
 	// Authenticate the connection
@@ -367,17 +399,25 @@ func (c *Client) attemptConnection(wsURL string) error {
 		return err
 	}
 
-	// Connection successful, update client state
+	// Connection successful, update client state. Disconnect closes and
+	// replaces c.closeCh under c.mu, so if it is no longer ours this attempt
+	// was cancelled while dialing or authenticating and must not be installed.
 	c.mu.Lock()
+	if c.closeCh != closeCh {
+		c.mu.Unlock()
+		_ = conn.Close()
+		return errConnectionCancelled
+	}
 	c.conn = conn
 	c.connected = true
 	c.connecting = false
 	c.hasConnected = true
+	done := c.done
 	c.mu.Unlock()
 
 	// Start ping/pong cycle and message listener
-	go c.startPingPong()
-	go c.listen()
+	go c.startPingPong(conn, closeCh, done)
+	go c.listen(conn, done, closeCh)
 
 	return nil
 }
@@ -445,7 +485,7 @@ func (c *Client) authenticateConnection(conn *websocket.Conn, token string) erro
 		return fmt.Errorf("failed to marshal auth message: %v", err)
 	}
 
-	if err = conn.WriteMessage(websocket.TextMessage, authMsgJSON); err != nil {
+	if err = c.writeMessage(conn, websocket.TextMessage, authMsgJSON); err != nil {
 		return fmt.Errorf("failed to send auth message: %v", err)
 	}
 
@@ -507,30 +547,27 @@ func (c *Client) sendInitialPing(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
-	return conn.WriteMessage(websocket.TextMessage, pingJSON)
+	return c.writeMessage(conn, websocket.TextMessage, pingJSON)
 }
 
 // listen reads messages from the websocket
-func (c *Client) listen() {
+func (c *Client) listen(conn *websocket.Conn, done chan struct{}, closeCh <-chan struct{}) {
 	defer func() {
 		c.mu.Lock()
-		c.connected = false
+		// A reconnect may have installed a newer connection before this old
+		// listener returns. Do not let the old listener clear the new state.
+		if c.conn == conn {
+			c.connected = false
+		}
 		c.mu.Unlock()
-		close(c.done)
+		close(done)
 	}()
 
 	for {
-		c.mu.Lock()
-		conn := c.conn
-		c.mu.Unlock()
-		if conn == nil {
-			return
-		}
-
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			// Connection closed or error occurred
-			c.handleConnectionError(err)
+			c.handleConnectionError(conn, closeCh)
 			return
 		}
 
@@ -545,9 +582,13 @@ func (c *Client) listen() {
 	}
 }
 
-// handleConnectionError logs the connection error and triggers reconnection if needed
-func (c *Client) handleConnectionError(err error) {
+// handleConnectionError triggers reconnection if the failed connection is still current.
+func (c *Client) handleConnectionError(conn *websocket.Conn, closeCh <-chan struct{}) {
 	c.mu.Lock()
+	if c.conn != conn {
+		c.mu.Unlock()
+		return
+	}
 	wasConnected := c.connected
 	c.connected = false
 	c.mu.Unlock()
@@ -555,11 +596,11 @@ func (c *Client) handleConnectionError(err error) {
 	// If we were connected and not deliberately disconnected, attempt to reconnect
 	if wasConnected {
 		select {
-		case <-c.closeCh:
+		case <-closeCh:
 			// Client was deliberately disconnected, don't reconnect
 		default:
 			// Connection error, try to reconnect
-			go c.reconnect()
+			go c.reconnect(conn)
 		}
 	}
 }
@@ -705,22 +746,22 @@ func (c *Client) dispatchEvent(event *Event) {
 }
 
 // startPingPong begins the ping/pong cycle to keep the connection alive
-func (c *Client) startPingPong() {
+func (c *Client) startPingPong(conn *websocket.Conn, closeCh, done <-chan struct{}) {
 	ticker := time.NewTicker(c.config.PingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.ping(); err != nil {
+			if err := c.ping(conn); err != nil {
 				// Connection error, reconnect
-				c.reconnect()
+				c.reconnect(conn)
 				return
 			}
-		case <-c.closeCh:
+		case <-closeCh:
 			// Connection closed by user
 			return
-		case <-c.done:
+		case <-done:
 			// Connection closed unexpectedly
 			return
 		}
@@ -728,15 +769,7 @@ func (c *Client) startPingPong() {
 }
 
 // ping sends a ping message
-func (c *Client) ping() error {
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		return fmt.Errorf("websocket connection is nil")
-	}
-
+func (c *Client) ping(conn *websocket.Conn) error {
 	// Create ping message with timestamp
 	pingData := fmt.Sprintf("%d", time.Now().UnixMilli())
 
@@ -746,15 +779,21 @@ func (c *Client) ping() error {
 	}
 
 	// Send ping
-	return conn.WriteMessage(websocket.PingMessage, []byte(pingData))
+	return c.writeMessage(conn, websocket.PingMessage, []byte(pingData))
+}
+
+func (c *Client) writeMessage(conn *websocket.Conn, messageType int, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return conn.WriteMessage(messageType, data)
 }
 
 // handlePong handles a pong response
-func (c *Client) handlePong(data string) error {
+func (c *Client) handlePong(conn *websocket.Conn, data string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.conn == nil {
+	if conn == nil {
 		return nil
 	}
 
@@ -767,14 +806,14 @@ func (c *Client) handlePong(data string) error {
 	}
 
 	// Reset the read deadline
-	return c.conn.SetReadDeadline(time.Time{})
+	return conn.SetReadDeadline(time.Time{})
 }
 
 // reconnect attempts to reconnect to the Mercury service.
 // Uses an atomic CAS guard to ensure exactly one reconnection attempt runs
 // at a time, even if multiple goroutines (listen, startPingPong) detect the
 // disconnection concurrently.
-func (c *Client) reconnect() {
+func (c *Client) reconnect(conn *websocket.Conn) {
 	// Atomic CAS: only proceed if no other goroutine is already reconnecting
 	if !c.reconnecting.CompareAndSwap(false, true) {
 		return
@@ -782,7 +821,7 @@ func (c *Client) reconnect() {
 
 	c.mu.Lock()
 	// Double-check under lock
-	if c.connecting {
+	if c.connecting || c.conn != conn {
 		c.mu.Unlock()
 		c.reconnecting.Store(false)
 		return
@@ -790,7 +829,7 @@ func (c *Client) reconnect() {
 
 	c.connected = false
 	c.connecting = true
-	conn := c.conn
+	currentConn := c.conn
 	deviceProvider := c.deviceProvider
 	customURL := c.customWebSocketURL
 	c.conn = nil
@@ -798,11 +837,12 @@ func (c *Client) reconnect() {
 	// don't collide with the old ones that may still be shutting down.
 	c.closeCh = make(chan struct{})
 	c.done = make(chan struct{})
+	closeCh := c.closeCh
 	c.mu.Unlock()
 
 	// Close the old connection if it exists
-	if conn != nil {
-		_ = conn.Close()
+	if currentConn != nil {
+		_ = currentConn.Close()
 	}
 
 	// Try to reconnect
@@ -811,14 +851,12 @@ func (c *Client) reconnect() {
 
 		wsURL := c.getReconnectURL(deviceProvider, customURL)
 		if wsURL == "" {
-			c.mu.Lock()
-			c.connecting = false
-			c.mu.Unlock()
+			c.finishConnecting(closeCh)
 			return
 		}
 
 		// Try to connect with backoff
-		_ = c.connectWithBackoff(wsURL)
+		_ = c.connectWithBackoff(wsURL, closeCh)
 	}()
 }
 

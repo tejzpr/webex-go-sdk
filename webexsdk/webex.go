@@ -20,6 +20,14 @@ import (
 	"time"
 )
 
+const (
+	// These limits keep enough reusable connections for concurrent Webex API
+	// traffic while still placing a finite upper bound on connections per host.
+	defaultMaxIdleConns        = 100
+	defaultMaxIdleConnsPerHost = 64
+	defaultMaxConnsPerHost     = 64
+)
+
 // Logger is the interface for SDK logging. Any logger that implements Printf
 // (such as the standard library's *log.Logger) can be used.
 type Logger interface {
@@ -83,13 +91,27 @@ type Config struct {
 	// If nil, a default client will be created with the specified Timeout
 	HttpClient *http.Client
 
-	// MaxRetries is the maximum number of retries for transient errors (429, 502, 503, 504).
+	// MaxRetries is the maximum number of retries for transient errors (423, 429, 502, 503, 504).
 	// Set to 0 to disable retries. Default: 3.
 	MaxRetries int
 
 	// RetryBaseDelay is the initial delay between retries. Default: 1s.
 	// Subsequent retries use exponential backoff (delay * 2^attempt).
 	RetryBaseDelay time.Duration
+
+	// RetryUnsafeMethods allows automatic retries of non-idempotent methods such
+	// as POST and PATCH after transient server errors (502, 503, 504).
+	// It is disabled by default because an ambiguous server response may occur
+	// after the operation succeeded, and retrying could duplicate side effects.
+	// Rate-limit responses (429) and locked responses (423) remain retryable for
+	// all methods because the server explicitly asks the client to retry.
+	RetryUnsafeMethods bool
+
+	// DisableRetryAfterRetries returns 429 and 423 responses immediately instead
+	// of waiting inside the SDK. Durable queue consumers can enable this option,
+	// parse the structured APIError.RetryAfter value, and schedule a later retry
+	// without holding a queue message or database lock.
+	DisableRetryAfterRetries bool
 
 	// Logger is the logger for SDK operations. If nil, the standard library's
 	// default logger (log.Default()) is used.
@@ -99,12 +121,14 @@ type Config struct {
 // DefaultConfig returns a default configuration for the Webex client
 func DefaultConfig() *Config {
 	return &Config{
-		BaseURL:        "https://webexapis.com/v1",
-		Timeout:        30 * time.Second,
-		DefaultHeaders: make(map[string]string),
-		HttpClient:     nil,
-		MaxRetries:     3,
-		RetryBaseDelay: 1 * time.Second,
+		BaseURL:                  "https://webexapis.com/v1",
+		Timeout:                  30 * time.Second,
+		DefaultHeaders:           make(map[string]string),
+		HttpClient:               nil,
+		MaxRetries:               3,
+		RetryBaseDelay:           1 * time.Second,
+		RetryUnsafeMethods:       false,
+		DisableRetryAfterRetries: false,
 	}
 }
 
@@ -133,12 +157,10 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 		return nil, err
 	}
 
-	// Create HTTP client - either use the provided custom client or create a default one
+	// Create HTTP client - either use the provided custom client or create a pooled default one.
 	httpClient := config.HttpClient
 	if httpClient == nil {
-		httpClient = &http.Client{
-			Timeout: config.Timeout,
-		}
+		httpClient = newDefaultHTTPClient(config.Timeout)
 	}
 
 	// Set up logger - use provided logger or default
@@ -159,6 +181,20 @@ func NewClient(accessToken string, config *Config) (*Client, error) {
 	return client, nil
 }
 
+// newDefaultHTTPClient clones Go's default transport so the SDK retains its
+// proxy, dial, TLS, and HTTP/2 behavior while supporting concurrent API calls.
+func newDefaultHTTPClient(timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = defaultMaxIdleConns
+	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
+	transport.MaxConnsPerHost = defaultMaxConnsPerHost
+
+	return &http.Client{
+		Transport: transport,
+		Timeout:   timeout,
+	}
+}
+
 // RegisterPlugin registers a plugin with the client
 func (c *Client) RegisterPlugin(plugin Plugin) {
 	c.plugins[plugin.Name()] = plugin
@@ -170,8 +206,8 @@ func (c *Client) GetPlugin(name string) (Plugin, bool) {
 	return plugin, ok
 }
 
-// Request performs an HTTP request to the Webex API with automatic retry
-// for transient errors (429, 502, 503, 504).
+// Request performs an HTTP request to the Webex API using the configured,
+// method-aware retry policy.
 // The caller is responsible for closing the response body when done.
 func (c *Client) Request(method, path string, params url.Values, body interface{}) (*http.Response, error) {
 	return c.RequestWithRetry(context.Background(), method, path, params, body)
@@ -216,8 +252,10 @@ func (c *Client) RequestWithContext(ctx context.Context, method, path string, pa
 }
 
 // RequestWithRetry performs an HTTP request with automatic retry for transient errors.
-// It retries on HTTP 429 (Too Many Requests, respecting Retry-After header) and
-// transient server errors (502, 503, 504) using exponential backoff.
+// It retries HTTP 429 (Too Many Requests, respecting Retry-After) and 423 (Locked)
+// for all methods. Transient server errors (502, 503, 504) are retried only for
+// idempotent methods unless Config.RetryUnsafeMethods is enabled. Set
+// Config.DisableRetryAfterRetries to return 429 and 423 immediately.
 // The caller is responsible for closing the response body when done.
 func (c *Client) RequestWithRetry(ctx context.Context, method, path string, params url.Values, body interface{}) (*http.Response, error) {
 	maxRetries := c.Config.MaxRetries
@@ -236,7 +274,7 @@ func (c *Client) RequestWithRetry(ctx context.Context, method, path string, para
 		}
 
 		// Check if we should retry
-		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+		if !shouldRetryRequest(method, resp.StatusCode, c.Config.RetryUnsafeMethods, c.Config.DisableRetryAfterRetries) || attempt == maxRetries {
 			return resp, nil
 		}
 
@@ -269,6 +307,31 @@ func isRetryableStatus(statusCode int) bool {
 		statusCode == http.StatusGatewayTimeout
 }
 
+// shouldRetryRequest prevents an automatic retry from repeating an unsafe
+// operation after an ambiguous gateway or server failure.
+func shouldRetryRequest(method string, statusCode int, retryUnsafeMethods, disableRetryAfterRetries bool) bool {
+	if !isRetryableStatus(statusCode) {
+		return false
+	}
+
+	// Retry-After responses explicitly tell the client that the request should
+	// be attempted later, including when the original method is not idempotent.
+	if statusCode == http.StatusTooManyRequests || statusCode == http.StatusLocked {
+		return !disableRetryAfterRetries
+	}
+
+	return retryUnsafeMethods || isIdempotentMethod(method)
+}
+
+func isIdempotentMethod(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete, http.MethodOptions, http.MethodTrace:
+		return true
+	default:
+		return false
+	}
+}
+
 // retryDelay calculates the delay before the next retry attempt.
 // For 429 responses, it respects the Retry-After header if present.
 // Otherwise, it uses exponential backoff: baseDelay * 2^attempt.
@@ -298,8 +361,9 @@ type MultipartFile struct {
 	Content   []byte // Raw file bytes
 }
 
-// RequestMultipart performs a multipart/form-data POST request to the Webex API
-// with automatic retry for transient errors (429, 502, 503, 504).
+// RequestMultipart performs a multipart/form-data POST request to the Webex API.
+// By default, it retries only explicit Retry-After responses (429 and 423).
+// Set Config.RetryUnsafeMethods to opt in to retries after 502, 503, and 504.
 // This is required for local file uploads (e.g., sending messages with attachments).
 // The caller is responsible for closing the response body when done.
 func (c *Client) RequestMultipart(path string, fields []MultipartField, files []MultipartFile) (*http.Response, error) {
@@ -324,7 +388,7 @@ func (c *Client) RequestMultipartWithRetry(ctx context.Context, path string, fie
 			return nil, err
 		}
 
-		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+		if !shouldRetryRequest(http.MethodPost, resp.StatusCode, c.Config.RetryUnsafeMethods, c.Config.DisableRetryAfterRetries) || attempt == maxRetries {
 			return resp, nil
 		}
 
@@ -465,7 +529,7 @@ func (c *Client) RequestURLWithRetry(ctx context.Context, method, fullURL string
 			return nil, err
 		}
 
-		if !isRetryableStatus(resp.StatusCode) || attempt == maxRetries {
+		if !shouldRetryRequest(method, resp.StatusCode, c.Config.RetryUnsafeMethods, c.Config.DisableRetryAfterRetries) || attempt == maxRetries {
 			return resp, nil
 		}
 

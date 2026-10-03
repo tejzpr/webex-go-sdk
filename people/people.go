@@ -56,6 +56,40 @@ type PeoplePage struct {
 	*webexsdk.Page
 }
 
+// Next retrieves and decodes the next page of people.
+func (p *PeoplePage) Next() (*PeoplePage, error) {
+	page, err := p.Page.Next()
+	if err != nil {
+		return nil, err
+	}
+	return newPeoplePage(page)
+}
+
+// Prev retrieves and decodes the previous page of people.
+func (p *PeoplePage) Prev() (*PeoplePage, error) {
+	page, err := p.Page.Prev()
+	if err != nil {
+		return nil, err
+	}
+	return newPeoplePage(page)
+}
+
+// newPeoplePage converts a generic SDK page into a typed people page.
+func newPeoplePage(page *webexsdk.Page) (*PeoplePage, error) {
+	peoplePage := &PeoplePage{
+		Page:  page,
+		Items: make([]Person, len(page.Items)),
+	}
+
+	for i, item := range page.Items {
+		if err := json.Unmarshal(item, &peoplePage.Items[i]); err != nil {
+			return nil, err
+		}
+	}
+
+	return peoplePage, nil
+}
+
 // Config holds the configuration for the People plugin
 type Config struct {
 	// BatcherWait is the time to wait before processing a batch request
@@ -389,19 +423,5 @@ func (c *Client) List(options *ListOptions) (*PeoplePage, error) {
 		return nil, err
 	}
 
-	// Unmarshal items into People
-	peoplePage := &PeoplePage{
-		Page:  page,
-		Items: make([]Person, len(page.Items)),
-	}
-
-	for i, item := range page.Items {
-		var person Person
-		if err := json.Unmarshal(item, &person); err != nil {
-			return nil, err
-		}
-		peoplePage.Items[i] = person
-	}
-
-	return peoplePage, nil
+	return newPeoplePage(page)
 }

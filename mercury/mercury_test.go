@@ -422,7 +422,7 @@ func TestHandlePong(t *testing.T) {
 	mc := New(client, nil)
 
 	t.Run("empty data", func(t *testing.T) {
-		err := mc.handlePong("")
+		err := mc.handlePong(nil, "")
 		if err != nil {
 			t.Errorf("Expected nil error, got %v", err)
 		}
@@ -433,7 +433,7 @@ func TestHandlePong(t *testing.T) {
 		pingTime := time.Now().Add(-100 * time.Millisecond).UnixMilli()
 		data := fmt.Sprintf("%d", pingTime)
 
-		err := mc.handlePong(data)
+		err := mc.handlePong(nil, data)
 		if err != nil {
 			t.Errorf("Expected nil error, got %v", err)
 		}
@@ -448,7 +448,7 @@ func TestHandlePong(t *testing.T) {
 	})
 
 	t.Run("invalid data", func(t *testing.T) {
-		err := mc.handlePong("not-a-number")
+		err := mc.handlePong(nil, "not-a-number")
 		if err != nil {
 			t.Errorf("Expected nil error for invalid data, got %v", err)
 		}

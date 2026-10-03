@@ -110,8 +110,10 @@ import (
 client, err := webex.NewClient(accessToken, &webexsdk.Config{
     BaseURL:        "https://webexapis.com/v1", // Default
     Timeout:        30 * time.Second,           // HTTP client timeout
-    MaxRetries:     5,                          // Default: 3 (0 disables retries)
-    RetryBaseDelay: 2 * time.Second,            // Default: 1s (exponential backoff)
+    MaxRetries:               5,               // Default: 3 (0 disables retries)
+    RetryBaseDelay:           2 * time.Second, // Default: 1s (exponential backoff)
+    RetryUnsafeMethods:      false,           // Opt in only if duplicate side effects are acceptable
+    DisableRetryAfterRetries: false,           // Return 429/423 immediately when true
 })
 ```
 
@@ -125,13 +127,21 @@ The SDK automatically retries requests that receive transient error responses:
 |--------|---------|------------------|
 | 429 | Too Many Requests | Respects `Retry-After` header |
 | 423 | Locked (file scanning) | Respects `Retry-After` header |
-| 502 | Bad Gateway | Exponential backoff |
-| 503 | Service Unavailable | Exponential backoff |
-| 504 | Gateway Timeout | Exponential backoff |
+| 502 | Bad Gateway | Exponential backoff for idempotent methods |
+| 503 | Service Unavailable | Exponential backoff for idempotent methods |
+| 504 | Gateway Timeout | Exponential backoff for idempotent methods |
 
 Backoff formula: `RetryBaseDelay × 2^attempt` (e.g., 1s → 2s → 4s).
 
-All request methods (`Request`, `RequestURL`, `RequestMultipart`) include retry support.
+All request methods (`Request`, `RequestURL`, `RequestMultipart`) include retry support. By default,
+non-idempotent methods such as `POST` and `PATCH` are not retried after 502, 503, or 504 because the
+server may have completed the operation before returning an ambiguous error. Set
+`RetryUnsafeMethods` to `true` only when duplicate side effects are acceptable. Explicit
+`Retry-After` responses (429 and 423) remain retryable for all methods.
+
+Queue consumers that need to release their message lock and schedule rate-limited work later should
+set `DisableRetryAfterRetries` to `true`, inspect the returned `RateLimitError.RetryAfter`, and
+perform the retry in their durable queue rather than blocking inside the SDK.
 
 ## Error Handling
 
@@ -173,7 +183,7 @@ for {
     for _, room := range page.Items {
         fmt.Println(room.Title)
     }
-    if !page.HasNext() {
+    if !page.HasNext {
         break
     }
     page, err = page.Next()

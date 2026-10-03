@@ -29,7 +29,9 @@ cfg := &webexsdk.Config{
     BaseURL:        "https://webexapis.com/v1", // Default
     Timeout:        30 * time.Second,           // Default
     MaxRetries:     3,                          // Default (0 disables retries)
-    RetryBaseDelay: 1 * time.Second,            // Default (exponential: delay * 2^attempt)
+    RetryBaseDelay:           1 * time.Second, // Default (exponential: delay * 2^attempt)
+    RetryUnsafeMethods:      false,           // Avoids duplicate POST/PATCH side effects
+    DisableRetryAfterRetries: false,           // Return 429/423 immediately when true
     Logger:         log.Default(),              // Any webexsdk.Logger (Printf method)
     HttpClient:     nil,                        // Custom *http.Client (optional)
     DefaultHeaders: map[string]string{          // Extra headers on every request
@@ -48,6 +50,8 @@ client, err := webexsdk.NewClient("YOUR_ACCESS_TOKEN", cfg)
 | `Timeout` | `time.Duration` | `30s` | HTTP client timeout |
 | `MaxRetries` | `int` | `3` | Max retry attempts (0 = no retries) |
 | `RetryBaseDelay` | `time.Duration` | `1s` | Initial retry delay (exponential backoff) |
+| `RetryUnsafeMethods` | `bool` | `false` | Retry POST/PATCH after 502, 503, or 504 |
+| `DisableRetryAfterRetries` | `bool` | `false` | Return 429/423 immediately without waiting |
 | `Logger` | `Logger` | `log.Default()` | Logger with `Printf(format, v...)` |
 | `HttpClient` | `*http.Client` | auto-created | Custom HTTP client |
 | `DefaultHeaders` | `map[string]string` | empty | Headers added to every request |
@@ -60,15 +64,21 @@ The SDK automatically retries requests that receive transient error responses:
 |-------------|---------|-----------------|
 | **429** | Too Many Requests | Wait `Retry-After` header duration, then retry |
 | **423** | Locked (malware scanning) | Wait `Retry-After` header duration, then retry |
-| **502** | Bad Gateway | Exponential backoff |
-| **503** | Service Unavailable | Exponential backoff |
-| **504** | Gateway Timeout | Exponential backoff |
+| **502** | Bad Gateway | Exponential backoff for idempotent methods |
+| **503** | Service Unavailable | Exponential backoff for idempotent methods |
+| **504** | Gateway Timeout | Exponential backoff for idempotent methods |
 
 Backoff formula: `RetryBaseDelay * 2^attempt` (e.g., 1s → 2s → 4s → 8s).
 
 When `Retry-After` is present (429 and 423), the header value overrides the calculated backoff.
 
-All request methods support retry: `Request`, `RequestURL`, `RequestMultipart`.
+All request methods support retry: `Request`, `RequestURL`, `RequestMultipart`. Non-idempotent
+methods are not retried after 502, 503, or 504 unless `RetryUnsafeMethods` is enabled. This prevents
+an ambiguous server response from automatically duplicating a `POST /messages` operation. Responses
+that explicitly instruct the client to retry (429 and 423) remain retryable for every method.
+
+For durable queue consumers, set `DisableRetryAfterRetries` to `true` and use the structured
+`RateLimitError.RetryAfter` value to schedule a later attempt without blocking the queue handler.
 
 ## Pagination
 

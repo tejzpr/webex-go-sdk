@@ -8,6 +8,7 @@ package webexsdk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -119,6 +120,49 @@ func TestNewClient(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewClientUsesBoundedPooledDefaultTransport(t *testing.T) {
+	client, err := NewClient("valid-token", nil)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	transport, ok := client.GetHTTPClient().Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("default transport type = %T, want *http.Transport", client.GetHTTPClient().Transport)
+	}
+
+	if transport == http.DefaultTransport {
+		t.Fatal("default transport must be cloned before SDK-specific limits are applied")
+	}
+	if transport.MaxIdleConns != defaultMaxIdleConns {
+		t.Errorf("MaxIdleConns = %d, want %d", transport.MaxIdleConns, defaultMaxIdleConns)
+	}
+	if transport.MaxIdleConnsPerHost != defaultMaxIdleConnsPerHost {
+		t.Errorf("MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, defaultMaxIdleConnsPerHost)
+	}
+	if transport.MaxConnsPerHost != defaultMaxConnsPerHost {
+		t.Errorf("MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, defaultMaxConnsPerHost)
+	}
+}
+
+func TestNewClientPreservesCustomHTTPClient(t *testing.T) {
+	customClient := &http.Client{
+		Transport: http.DefaultTransport,
+		Timeout:   45 * time.Second,
+	}
+	config := DefaultConfig()
+	config.HttpClient = customClient
+
+	client, err := NewClient("valid-token", config)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	if client.GetHTTPClient() != customClient {
+		t.Fatal("NewClient() replaced the caller-provided HTTP client")
 	}
 }
 
@@ -596,6 +640,161 @@ func TestRequest_Retries502(t *testing.T) {
 	}
 }
 
+func TestRequest_DoesNotRetryPostOn502ByDefault(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprintln(w, `{"message":"bad gateway"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodPost, "messages", nil, map[string]string{"text": "hello"})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("Expected 502, got %d", resp.StatusCode)
+	}
+	if attempts != 1 {
+		t.Errorf("Expected one POST attempt, got %d", attempts)
+	}
+}
+
+func TestRequest_RetriesPostOn429(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = fmt.Fprintln(w, `{"message":"rate limited"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, `{"id":"message-id"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     1,
+		RetryBaseDelay: time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodPost, "messages", nil, map[string]string{"text": "hello"})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected POST retry after 429, got %d attempts", attempts)
+	}
+}
+
+func TestRequest_ReturnsPost429WhenRetryAfterRetriesDisabled(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = fmt.Fprintln(w, `{"message":"rate limited"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:                  server.URL,
+		HttpClient:               server.Client(),
+		MaxRetries:               3,
+		RetryBaseDelay:           time.Second,
+		DisableRetryAfterRetries: true,
+		DefaultHeaders:           make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodPost, "messages", nil, map[string]string{"text": "hello"})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+
+	var result map[string]any
+	err = ParseResponse(resp, &result)
+	var rateLimitErr *RateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("Expected RateLimitError, got %T: %v", err, err)
+	}
+	if rateLimitErr.RetryAfter != 30*time.Second {
+		t.Errorf("Expected RetryAfter 30s, got %s", rateLimitErr.RetryAfter)
+	}
+	if attempts != 1 {
+		t.Errorf("Expected one POST attempt, got %d", attempts)
+	}
+}
+
+func TestRequest_RetriesPostOn502WhenUnsafeRetriesEnabled(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = fmt.Fprintln(w, `{"message":"bad gateway"}`)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, `{"id":"message-id"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:            server.URL,
+		HttpClient:         server.Client(),
+		MaxRetries:         1,
+		RetryBaseDelay:     time.Millisecond,
+		RetryUnsafeMethods: true,
+		DefaultHeaders:     make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.Request(http.MethodPost, "messages", nil, map[string]string{"text": "hello"})
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+	if attempts != 2 {
+		t.Errorf("Expected opt-in POST retry, got %d attempts", attempts)
+	}
+}
+
 func TestRequest_Retries423Locked(t *testing.T) {
 	// 423 Locked (anti-malware scanning) should be retried with Retry-After
 	attempts := 0
@@ -803,5 +1002,39 @@ func TestRequestMultipart_Retries429(t *testing.T) {
 	}
 	if attempts != 2 {
 		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+}
+
+func TestRequestMultipart_DoesNotRetry502ByDefault(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = fmt.Fprintln(w, `{"message":"bad gateway"}`)
+	}))
+	defer server.Close()
+
+	baseURL, _ := url.Parse(server.URL)
+	config := &Config{
+		BaseURL:        server.URL,
+		HttpClient:     server.Client(),
+		MaxRetries:     3,
+		RetryBaseDelay: time.Millisecond,
+		DefaultHeaders: make(map[string]string),
+	}
+	client, _ := NewClient("test-token", config)
+	client.BaseURL = baseURL
+
+	resp, err := client.RequestMultipart("messages", []MultipartField{{Name: "roomId", Value: "room-1"}}, nil)
+	if err != nil {
+		t.Fatalf("RequestMultipart failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("Expected 502, got %d", resp.StatusCode)
+	}
+	if attempts != 1 {
+		t.Errorf("Expected one multipart POST attempt, got %d", attempts)
 	}
 }
