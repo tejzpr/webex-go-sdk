@@ -88,6 +88,7 @@ type Client struct {
 	hasConnected       bool
 	reconnecting       atomic.Bool // Guards against concurrent reconnection attempts
 	mu                 sync.Mutex
+	writeMu            sync.Mutex // Serializes WebSocket writes across ping and shutdown.
 	eventHandlers      map[string][]EventHandler
 	closeCh            chan struct{}
 	done               chan struct{}
@@ -204,7 +205,7 @@ func (c *Client) Disconnect() error {
 
 	if conn != nil {
 		// Send close message and close the connection
-		_ = conn.WriteMessage(websocket.CloseMessage,
+		_ = c.writeMessage(conn, websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by client"))
 		_ = conn.Close()
 	}
@@ -356,9 +357,11 @@ func (c *Client) attemptConnection(wsURL string) error {
 		return err
 	}
 
-	// Set up pong handler
+	// Set up a connection-specific pong handler. Reconnect replaces the
+	// client's current connection, so the old handler must not reset deadlines
+	// on a newer socket.
 	conn.SetPongHandler(func(data string) error {
-		return c.handlePong(data)
+		return c.handlePong(conn, data)
 	})
 
 	// Authenticate the connection
@@ -373,11 +376,13 @@ func (c *Client) attemptConnection(wsURL string) error {
 	c.connected = true
 	c.connecting = false
 	c.hasConnected = true
+	closeCh := c.closeCh
+	done := c.done
 	c.mu.Unlock()
 
 	// Start ping/pong cycle and message listener
-	go c.startPingPong()
-	go c.listen()
+	go c.startPingPong(conn, closeCh, done)
+	go c.listen(conn, done, closeCh)
 
 	return nil
 }
@@ -445,7 +450,7 @@ func (c *Client) authenticateConnection(conn *websocket.Conn, token string) erro
 		return fmt.Errorf("failed to marshal auth message: %v", err)
 	}
 
-	if err = conn.WriteMessage(websocket.TextMessage, authMsgJSON); err != nil {
+	if err = c.writeMessage(conn, websocket.TextMessage, authMsgJSON); err != nil {
 		return fmt.Errorf("failed to send auth message: %v", err)
 	}
 
@@ -507,30 +512,27 @@ func (c *Client) sendInitialPing(conn *websocket.Conn) error {
 	if err != nil {
 		return err
 	}
-	return conn.WriteMessage(websocket.TextMessage, pingJSON)
+	return c.writeMessage(conn, websocket.TextMessage, pingJSON)
 }
 
 // listen reads messages from the websocket
-func (c *Client) listen() {
+func (c *Client) listen(conn *websocket.Conn, done chan struct{}, closeCh <-chan struct{}) {
 	defer func() {
 		c.mu.Lock()
-		c.connected = false
+		// A reconnect may have installed a newer connection before this old
+		// listener returns. Do not let the old listener clear the new state.
+		if c.conn == conn {
+			c.connected = false
+		}
 		c.mu.Unlock()
-		close(c.done)
+		close(done)
 	}()
 
 	for {
-		c.mu.Lock()
-		conn := c.conn
-		c.mu.Unlock()
-		if conn == nil {
-			return
-		}
-
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			// Connection closed or error occurred
-			c.handleConnectionError(err)
+			c.handleConnectionError(conn, closeCh)
 			return
 		}
 
@@ -545,9 +547,13 @@ func (c *Client) listen() {
 	}
 }
 
-// handleConnectionError logs the connection error and triggers reconnection if needed
-func (c *Client) handleConnectionError(err error) {
+// handleConnectionError triggers reconnection if the failed connection is still current.
+func (c *Client) handleConnectionError(conn *websocket.Conn, closeCh <-chan struct{}) {
 	c.mu.Lock()
+	if c.conn != conn {
+		c.mu.Unlock()
+		return
+	}
 	wasConnected := c.connected
 	c.connected = false
 	c.mu.Unlock()
@@ -555,11 +561,11 @@ func (c *Client) handleConnectionError(err error) {
 	// If we were connected and not deliberately disconnected, attempt to reconnect
 	if wasConnected {
 		select {
-		case <-c.closeCh:
+		case <-closeCh:
 			// Client was deliberately disconnected, don't reconnect
 		default:
 			// Connection error, try to reconnect
-			go c.reconnect()
+			go c.reconnect(conn)
 		}
 	}
 }
@@ -705,22 +711,22 @@ func (c *Client) dispatchEvent(event *Event) {
 }
 
 // startPingPong begins the ping/pong cycle to keep the connection alive
-func (c *Client) startPingPong() {
+func (c *Client) startPingPong(conn *websocket.Conn, closeCh, done <-chan struct{}) {
 	ticker := time.NewTicker(c.config.PingInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.ping(); err != nil {
+			if err := c.ping(conn); err != nil {
 				// Connection error, reconnect
-				c.reconnect()
+				c.reconnect(conn)
 				return
 			}
-		case <-c.closeCh:
+		case <-closeCh:
 			// Connection closed by user
 			return
-		case <-c.done:
+		case <-done:
 			// Connection closed unexpectedly
 			return
 		}
@@ -728,15 +734,7 @@ func (c *Client) startPingPong() {
 }
 
 // ping sends a ping message
-func (c *Client) ping() error {
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		return fmt.Errorf("websocket connection is nil")
-	}
-
+func (c *Client) ping(conn *websocket.Conn) error {
 	// Create ping message with timestamp
 	pingData := fmt.Sprintf("%d", time.Now().UnixMilli())
 
@@ -746,15 +744,21 @@ func (c *Client) ping() error {
 	}
 
 	// Send ping
-	return conn.WriteMessage(websocket.PingMessage, []byte(pingData))
+	return c.writeMessage(conn, websocket.PingMessage, []byte(pingData))
+}
+
+func (c *Client) writeMessage(conn *websocket.Conn, messageType int, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return conn.WriteMessage(messageType, data)
 }
 
 // handlePong handles a pong response
-func (c *Client) handlePong(data string) error {
+func (c *Client) handlePong(conn *websocket.Conn, data string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.conn == nil {
+	if conn == nil {
 		return nil
 	}
 
@@ -767,14 +771,14 @@ func (c *Client) handlePong(data string) error {
 	}
 
 	// Reset the read deadline
-	return c.conn.SetReadDeadline(time.Time{})
+	return conn.SetReadDeadline(time.Time{})
 }
 
 // reconnect attempts to reconnect to the Mercury service.
 // Uses an atomic CAS guard to ensure exactly one reconnection attempt runs
 // at a time, even if multiple goroutines (listen, startPingPong) detect the
 // disconnection concurrently.
-func (c *Client) reconnect() {
+func (c *Client) reconnect(conn *websocket.Conn) {
 	// Atomic CAS: only proceed if no other goroutine is already reconnecting
 	if !c.reconnecting.CompareAndSwap(false, true) {
 		return
@@ -782,7 +786,7 @@ func (c *Client) reconnect() {
 
 	c.mu.Lock()
 	// Double-check under lock
-	if c.connecting {
+	if c.connecting || c.conn != conn {
 		c.mu.Unlock()
 		c.reconnecting.Store(false)
 		return
@@ -790,7 +794,7 @@ func (c *Client) reconnect() {
 
 	c.connected = false
 	c.connecting = true
-	conn := c.conn
+	currentConn := c.conn
 	deviceProvider := c.deviceProvider
 	customURL := c.customWebSocketURL
 	c.conn = nil
@@ -801,8 +805,8 @@ func (c *Client) reconnect() {
 	c.mu.Unlock()
 
 	// Close the old connection if it exists
-	if conn != nil {
-		_ = conn.Close()
+	if currentConn != nil {
+		_ = currentConn.Close()
 	}
 
 	// Try to reconnect
